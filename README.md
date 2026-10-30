@@ -35,7 +35,8 @@ in front. Done cuts them out into layers.
 **Painting normals:** click Paint in the studio, pick a piece in the list, and pick a facing direction
 on the sphere. Brush (B) paints it, Shape (L) fills an area you draw around, and Erase (E) goes back to
 facing you. `[` and `]` change the size, Option-click picks up a direction from the piece, and Cmd+Z
-undoes. Strokes stay editable and survive re-cutting.
+undoes. Strokes stay editable and survive re-cutting. The Normals view shows normals over the painting,
+with a slider for how strongly.
 
 **Lighting:** drag the painting or the ball to move the light. Hold Space and drag to pan. Click a
 layer to hide it. Double-click,

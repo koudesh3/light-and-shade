@@ -29,6 +29,7 @@ pub struct LightRoom {
     sheen: f32,
     mode: Mode,
     linear: bool,
+    normal_opacity: f32,
     dark_paper: bool,
     orbit: bool,
     view: View,
@@ -61,6 +62,7 @@ impl LightRoom {
             sheen: 0.08,
             mode: scripted.mode.unwrap_or(Mode::Lit),
             linear: false,
+            normal_opacity: 0.5,
             dark_paper: false,
             orbit: false,
             view: View {
@@ -164,6 +166,10 @@ impl LightRoom {
     }
 
     fn right_panel(&mut self, ui: &mut egui::Ui) {
+        if self.mode == Mode::Normals {
+            design::slider(ui, "Normal opacity", &mut self.normal_opacity, 0.0..=1.0);
+            design::gap(ui);
+        }
         if let Some(painter) = &mut self.painter {
             let outcome = painter.panel(ui, &mut self.project);
             self.after_paint(outcome);
@@ -268,6 +274,7 @@ impl LightRoom {
             sheen: self.sheen,
             mode: self.mode,
             linear: self.linear,
+            normal_opacity: self.normal_opacity,
             background,
             visible: &self.visible,
         };
@@ -348,7 +355,7 @@ impl LightRoom {
         let nav = design::top_bar(ui, |ui| self.toolbar(ui));
         design::side_panel(egui::Panel::left("sidebar"), 216.0, ui, |ui| self.left_panel(ui));
         design::side_panel(egui::Panel::right("inspector"), 244.0, ui, |ui| {
-            self.right_panel(ui)
+            egui::ScrollArea::vertical().show(ui, |ui| self.right_panel(ui));
         });
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(design::WHITE))

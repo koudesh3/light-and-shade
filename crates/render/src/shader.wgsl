@@ -1,5 +1,5 @@
 // p = ambient, strength, sheen, mode (0 lit, 1 normals, 2 original)
-// q.x = 1 to shade in linear light
+// q.x = 1 to shade in linear light, q.y = how strongly normals show over the painting
 struct Globals { xf: vec4f, light: vec4f, p: vec4f, q: vec4f };
 struct Quad { rect: vec4f };
 
@@ -45,7 +45,7 @@ fn to_srgb(c: vec3f) -> vec3f {
     let shaded = clamp(base * (g.p.x + g.p.y * d) + vec3f(s), vec3f(0.0), vec3f(1.0));
     col = select(shaded, to_srgb(shaded), linear);
   } else if (g.p.w < 1.5) {
-    col = nr;
+    col = mix(albedo, nr, g.q.y);
   }
   // Neighbouring layers both fade out along a shared edge. Tightening the fade stops
   // their two half-covered pixels from letting the paper through as a hairline.

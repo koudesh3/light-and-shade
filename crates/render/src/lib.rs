@@ -24,6 +24,8 @@ pub struct Frame<'a> {
     pub sheen: f32,
     pub mode: Mode,
     pub linear: bool,
+    /// How strongly the normals show over the painting in `Mode::Normals`, from 0 to 1.
+    pub normal_opacity: f32,
     pub background: [f64; 3],
     /// Per layer, back to front. Layers past the end are drawn.
     pub visible: &'a [bool],
@@ -270,7 +272,7 @@ impl Renderer {
                 frame.sheen,
                 frame.mode as u32 as f32,
             ],
-            q: [frame.linear as u32 as f32, 0.0, 0.0, 0.0],
+            q: [frame.linear as u32 as f32, frame.normal_opacity, 0.0, 0.0],
         };
         queue.write_buffer(&self.globals, 0, bytemuck::bytes_of(&globals));
         let [r, g, b] = frame.background;

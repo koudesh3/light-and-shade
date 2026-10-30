@@ -50,6 +50,7 @@ fn draw(
         sheen: 0.08,
         mode,
         linear: false,
+        normal_opacity: 1.0,
         background: [1.0, 1.0, 1.0],
         visible: &[],
     };
