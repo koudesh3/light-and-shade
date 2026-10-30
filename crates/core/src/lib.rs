@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 pub use bake::{THUMBNAIL, coverage, painting_name, slug};
-pub use paint::{NormalMap, Stroke, StrokeKind, decode_normal, encode_normal};
+pub use paint::{
+    NormalMap, Stroke, StrokeKind, decode_normal, direction_palette, encode_normal, nearest_direction,
+};
 
 /// Below this many pixels on the longest side, an image looks soft at full canvas size.
 const LOW_RESOLUTION: u32 = 1600;

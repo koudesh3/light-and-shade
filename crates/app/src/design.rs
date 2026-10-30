@@ -70,6 +70,7 @@ pub fn apply(ctx: &egui::Context) {
     ctx.set_visuals_of(egui::Theme::Light, v);
     ctx.global_style_mut(|s| {
         s.spacing.item_spacing = vec2(GAP, GAP);
+        s.spacing.scroll = egui::style::ScrollStyle::floating();
         s.text_styles.insert(egui::TextStyle::Body, regular(TEXT));
         s.text_styles.insert(egui::TextStyle::Button, regular(TEXT));
     });

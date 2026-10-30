@@ -352,7 +352,11 @@ impl LightRoom {
         let nav = design::top_bar(ui, |ui| self.toolbar(ui));
         design::side_panel(egui::Panel::left("sidebar"), 216.0, ui, |ui| self.left_panel(ui));
         design::side_panel(egui::Panel::right("inspector"), 244.0, ui, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| self.right_panel(ui));
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                // Keep a gutter for the scroll bar, so it never sits on the values.
+                ui.set_max_width(ui.available_width() - 8.0);
+                self.right_panel(ui)
+            });
         });
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(design::WHITE))

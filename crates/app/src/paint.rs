@@ -18,6 +18,8 @@ enum Tool {
 
 pub struct Painter {
     normal: [f32; 3],
+    /// How many directions the sphere offers, or `None` for all of them.
+    shades: Option<usize>,
     tool: Tool,
     radius: f32,
     pub piece: usize,
@@ -34,6 +36,7 @@ impl Painter {
         let piece = project.cuts.len() - 1;
         Self {
             normal: FACING_YOU,
+            shades: None,
             tool: Tool::Brush,
             radius: 60.0,
             piece,
@@ -91,7 +94,7 @@ impl Painter {
         let mut changed = false;
         design::heading(ui, "Direction");
         ui.add_space(4.0);
-        ui.vertical_centered(|ui| self.sphere.show(ui, &mut self.normal));
+        ui.vertical_centered(|ui| self.sphere.show(ui, &mut self.normal, self.shades));
         ui.add_space(4.0);
         let row = vec2(ui.available_width(), design::ROW);
         ui.allocate_ui_with_layout(row, egui::Layout::left_to_right(egui::Align::Center), |ui| {
@@ -103,6 +106,12 @@ impl Painter {
                 }
             });
         });
+        let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), design::ROW), egui::Sense::hover());
+        const SHADES: [Option<usize>; 3] = [None, Some(32), Some(16)];
+        let selected = SHADES.iter().position(|s| *s == self.shades).unwrap_or(0);
+        if let Some(i) = design::tabs(ui, rect.center(), &["All", "32", "16"], selected) {
+            self.shades = SHADES[i];
+        }
         design::gap(ui);
         design::heading(ui, "Tool");
         let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), design::ROW), egui::Sense::hover());

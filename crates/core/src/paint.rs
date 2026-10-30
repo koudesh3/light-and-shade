@@ -42,6 +42,31 @@ pub fn decode_normal(color: Rgba<u8>) -> [f32; 3] {
     n.map(|c| c / len)
 }
 
+/// `count` directions spread evenly over the half of the sphere facing the viewer. They
+/// follow a golden-angle spiral out from straight ahead, so the first always faces you.
+pub fn direction_palette(count: usize) -> Vec<[f32; 3]> {
+    const GOLDEN_ANGLE: f32 = 2.399_963;
+    (0..count)
+        .map(|i| {
+            let z = 1.0 - i as f32 / count as f32;
+            let r = (1.0 - z * z).sqrt();
+            let angle = i as f32 * GOLDEN_ANGLE;
+            [r * angle.cos(), r * angle.sin(), z]
+        })
+        .collect()
+}
+
+/// The palette entry closest to `normal`. Grouping every direction by this is what
+/// divides the sphere into Voronoi cells.
+pub fn nearest_direction(palette: &[[f32; 3]], normal: [f32; 3]) -> [f32; 3] {
+    let closeness = |d: &[f32; 3]| d[0] * normal[0] + d[1] * normal[1] + d[2] * normal[2];
+    palette
+        .iter()
+        .copied()
+        .max_by(|a, b| closeness(a).total_cmp(&closeness(b)))
+        .unwrap_or(normal)
+}
+
 /// One piece's normals, laid over its layer. There's no need to clip to the piece:
 /// the colour layer's alpha already hides anything painted outside it.
 pub struct NormalMap {
@@ -152,6 +177,40 @@ mod tests {
             normal: [1.0, 0.0, 0.0],
             radius: 5.0,
             points,
+        }
+    }
+
+    #[test]
+    fn the_palette_is_unit_length_and_faces_the_viewer() {
+        for count in [16, 32] {
+            let palette = direction_palette(count);
+            assert_eq!(palette.len(), count);
+            assert_eq!(palette[0], [0.0, 0.0, 1.0]);
+            for d in &palette {
+                assert!((d.iter().map(|c| c * c).sum::<f32>() - 1.0).abs() < 1e-5);
+                assert!(d[2] > 0.0, "{d:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_palette_is_evenly_spread() {
+        let palette = direction_palette(32);
+        let dot = |a: &[f32; 3], b: &[f32; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+        let closest = palette
+            .iter()
+            .enumerate()
+            .flat_map(|(i, a)| palette[i + 1..].iter().map(move |b| dot(a, b)))
+            .fold(f32::MIN, f32::max);
+        assert!(closest < 0.97, "two directions are nearly the same: {closest}");
+    }
+
+    #[test]
+    fn picking_snaps_to_the_nearest_direction() {
+        let palette = direction_palette(16);
+        assert_eq!(nearest_direction(&palette, [0.01, 0.0, 0.99]), [0.0, 0.0, 1.0]);
+        for d in &palette {
+            assert_eq!(nearest_direction(&palette, *d), *d);
         }
     }
 
