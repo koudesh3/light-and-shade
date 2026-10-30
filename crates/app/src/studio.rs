@@ -16,6 +16,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
+/// Frames a scripted run waits before sending input.
+const SETTLE_FRAMES: u32 = 10;
+
 /// Where a screen wants to go next.
 pub enum Nav {
     Home,
@@ -161,6 +164,7 @@ pub struct Studio {
     menu: Menu,
     error: Option<String>,
     scripted: Scripted,
+    frames: u32,
     settled: u32,
 }
 
@@ -181,6 +185,7 @@ impl Studio {
             menu: Menu::install(),
             error: None,
             scripted,
+            frames: 0,
             settled: 0,
         };
         if let Some(name) = studio.scripted.open.take() {
@@ -338,7 +343,10 @@ impl eframe::App for Studio {
         if let Some(path) = self.scripted.drop.take() {
             input.dropped_files.push(Arc::new(ScriptedFile(path)));
         }
-        if self.job.is_none()
+        // Widgets answer to the layout of the previous frame, so let the window settle first.
+        self.frames += 1;
+        if self.frames > SETTLE_FRAMES
+            && self.job.is_none()
             && let Some(events) = self.scripted.input.pop_front()
         {
             input.events.extend(events);
