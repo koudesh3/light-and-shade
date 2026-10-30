@@ -193,16 +193,20 @@ pub fn row(ui: &mut Ui, text: &str, selected: bool, color: Color32) -> Response 
     response
 }
 
-/// A row that switches something on and off, with a dot showing which.
-pub fn layer_row(ui: &mut Ui, text: &str, on: bool) -> Response {
-    let response = row(ui, text, false, if on { INK } else { MUTED });
+/// A layer row: returns the row itself, and whether its visibility dot was clicked.
+pub fn layer_row(ui: &mut Ui, text: &str, on: bool, selected: bool) -> (Response, bool) {
+    let response = row(ui, text, selected, if on { INK } else { MUTED });
     let dot = response.rect.right_center() - vec2(13.0, 0.0);
+    let hit = Rect::from_center_size(dot, Vec2::splat(ROW));
+    let clicked = ui
+        .interact(hit, response.id.with("dot"), Sense::click())
+        .clicked();
     if on {
         ui.painter().circle_filled(dot, 3.0, INK);
     } else {
         ui.painter().circle_stroke(dot, 2.5, Stroke::new(1.0, MUTED));
     }
-    response
+    (response, clicked)
 }
 
 fn width_of(ui: &Ui, text: &str, font: FontId) -> f32 {
@@ -222,9 +226,14 @@ fn pill(ui: &mut Ui, rect: Rect, text: &str, selected: bool) -> Response {
 
 /// A small text button.
 pub fn button(ui: &mut Ui, text: &str) -> Response {
-    let size = vec2(width_of(ui, text, regular(TEXT)) + 20.0, ROW);
+    toggle_button(ui, text, false)
+}
+
+/// A small text button that stays lit while its mode is on.
+pub fn toggle_button(ui: &mut Ui, text: &str, on: bool) -> Response {
+    let size = vec2(width_of(ui, text, medium(TEXT)) + 20.0, ROW);
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
-    pill(ui, rect, text, false)
+    pill(ui, rect, text, on)
 }
 
 /// The one black button on a screen.
@@ -363,6 +372,21 @@ pub fn drop_veil(ctx: &egui::Context, text: &str) {
 
 /// A labelled slider: name and value above a hairline rail with a black knob.
 pub fn slider(ui: &mut Ui, label: &str, value: &mut f32, range: RangeInclusive<f32>) -> bool {
+    labelled_slider(ui, label, value, range, 2)
+}
+
+/// A slider for a whole number.
+pub fn whole_slider(ui: &mut Ui, label: &str, value: &mut f32, range: RangeInclusive<f32>) -> bool {
+    labelled_slider(ui, label, value, range, 0)
+}
+
+fn labelled_slider(
+    ui: &mut Ui,
+    label: &str,
+    value: &mut f32,
+    range: RangeInclusive<f32>,
+    decimals: usize,
+) -> bool {
     const KNOB: f32 = 6.0;
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 42.0), Sense::click_and_drag());
     let (lo, hi) = (*range.start(), *range.end());
@@ -388,7 +412,7 @@ pub fn slider(ui: &mut Ui, label: &str, value: &mut f32, range: RangeInclusive<f
     painter.text(
         pos2(rect.right(), top),
         Align2::RIGHT_CENTER,
-        format!("{value:.2}"),
+        format!("{value:.decimals$}"),
         regular(TEXT),
         MUTED,
     );

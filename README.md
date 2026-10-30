@@ -32,6 +32,11 @@ it. To pan by dragging, switch to the Move tool (M, and C to go back) or hold Sp
 points or delete it. Backspace removes the last point, Esc cancels, and Cmd+Z undoes. Later pieces sit
 in front. Done cuts them out into layers.
 
+**Painting normals:** click Paint in the studio, pick a piece in the list, and pick a facing direction
+on the sphere. Brush (B) paints it, Shape (L) fills an area you draw around, and Erase (E) goes back to
+facing you. `[` and `]` change the size, Option-click picks up a direction from the piece, and Cmd+Z
+undoes. Strokes stay editable and survive re-cutting.
+
 **Lighting:** drag the painting or the ball to move the light. Hold Space and drag to pan. Click a
 layer to hide it. Double-click,
 press F or click the zoom level to fit. Keys 1, 2 and 3 switch views, and O orbits the light.

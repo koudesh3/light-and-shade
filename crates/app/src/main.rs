@@ -7,6 +7,7 @@ mod design;
 mod home;
 mod library;
 mod light;
+mod paint;
 mod platform;
 mod studio;
 

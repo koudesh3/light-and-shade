@@ -61,6 +61,60 @@ impl Ball {
     }
 }
 
+/// The direction sphere: every facing direction, drawn in its normal-map colour.
+#[derive(Default)]
+pub struct Sphere {
+    texture: Option<TextureHandle>,
+}
+
+impl Sphere {
+    pub fn show(&mut self, ui: &mut egui::Ui, normal: &mut [f32; 3]) -> bool {
+        let (rect, response) = ui.allocate_exact_size(Vec2::splat(132.0), Sense::click_and_drag());
+        let mut changed = false;
+        if let Some(pos) = response.interact_pointer_pos() {
+            let v = (pos - rect.center()) / (rect.width() / 2.0);
+            let m = (v.length() / 0.98).max(1.0);
+            let (x, y) = (v.x / m, -v.y / m);
+            *normal = [x, y, (1.0 - x * x - y * y).max(0.0).sqrt()];
+            changed = true;
+        }
+        let px = (rect.width() * ui.pixels_per_point()).round() as usize;
+        let texture = self.texture.get_or_insert_with(|| {
+            ui.ctx()
+                .load_texture("direction sphere", directions(px), TextureOptions::LINEAR)
+        });
+        let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+        ui.painter().image(texture.id(), rect, uv, Color32::WHITE);
+        let at = rect.center() + egui::vec2(normal[0], -normal[1]) * rect.width() / 2.0;
+        ui.painter().circle_stroke(at, 5.0, (2.5, Color32::WHITE));
+        ui.painter().circle_stroke(at, 5.0, (1.0, Color32::BLACK));
+        changed
+    }
+}
+
+fn directions(size: usize) -> ColorImage {
+    let r = size as f32 / 2.0;
+    let mut pixels = vec![Color32::TRANSPARENT; size * size];
+    for y in 0..size {
+        for x in 0..size {
+            let (nx, ny) = ((x as f32 + 0.5 - r) / r, -(y as f32 + 0.5 - r) / r);
+            let r2 = nx * nx + ny * ny;
+            let edge = ((1.0 - r2.sqrt()) * r).clamp(0.0, 1.0);
+            if edge > 0.0 {
+                let nz = (1.0 - r2).max(0.0).sqrt();
+                let channel = |c: f32| ((c * 0.5 + 0.5) * 255.0 * edge) as u8;
+                pixels[y * size + x] = Color32::from_rgba_premultiplied(
+                    channel(nx),
+                    channel(ny),
+                    channel(nz),
+                    (edge * 255.0) as u8,
+                );
+            }
+        }
+    }
+    ColorImage::new([size, size], pixels)
+}
+
 fn shade(size: usize, l: [f32; 3], ambient: f32, strength: f32, sheen: f32) -> ColorImage {
     let r = size as f32 / 2.0;
     let h = {

@@ -41,6 +41,8 @@ pub struct CutBoard {
     /// The last freehand point on screen, while a stroke is under way.
     stroke: Option<Pos2>,
     history: Vec<Snapshot>,
+    /// Cuts changed since this board opened, so the layers need rebuilding.
+    dirty: bool,
     error: Option<String>,
 }
 
@@ -76,6 +78,7 @@ impl CutBoard {
             grabbed: None,
             stroke: None,
             history: Vec::new(),
+            dirty: false,
             error: None,
         })
     }
@@ -105,6 +108,7 @@ impl CutBoard {
     }
 
     fn save(&mut self) {
+        self.dirty = true;
         self.error = self.project.save().err().map(|e| format!("{e:#}"));
     }
 
@@ -119,6 +123,7 @@ impl CutBoard {
         self.project.cuts.push(Cut {
             name: format!("Piece {number}"),
             points,
+            strokes: Vec::new(),
         });
         self.selected = None;
         self.save();
@@ -178,7 +183,12 @@ impl CutBoard {
         ui.horizontal_centered(|ui| {
             ui.add_space(design::TRAFFIC_LIGHTS);
             if design::button(ui, "‹ Paintings").clicked() {
-                nav = Some(Nav::Home);
+                self.close_draft();
+                nav = Some(if self.dirty {
+                    Nav::BakeHome(self.project.clone())
+                } else {
+                    Nav::Home
+                });
             }
             ui.colored_label(design::MUTED, &self.project.name);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

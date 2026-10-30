@@ -23,6 +23,8 @@ pub enum Nav {
     Light(Project),
     New(PathBuf),
     Bake(Project),
+    /// Rebuild the layers, then go home.
+    BakeHome(Project),
 }
 
 enum Screen {
@@ -33,6 +35,7 @@ enum Screen {
 
 #[derive(Clone, Copy)]
 enum Then {
+    Home,
     Cut,
     Light,
 }
@@ -211,15 +214,23 @@ impl Studio {
                 });
                 Ok(())
             }
-            Nav::Bake(mut project) => {
-                self.spawn(ctx, Then::Light, "Cutting out your pieces…", move || {
-                    project.bake()?;
-                    Ok(project)
-                });
+            Nav::Bake(project) => {
+                self.bake(ctx, Then::Light, project);
+                Ok(())
+            }
+            Nav::BakeHome(project) => {
+                self.bake(ctx, Then::Home, project);
                 Ok(())
             }
         };
         self.error = result.err().map(|e| format!("{e:#}"));
+    }
+
+    fn bake(&mut self, ctx: &egui::Context, then: Then, mut project: Project) {
+        self.spawn(ctx, then, "Cutting out your pieces…", move || {
+            project.bake()?;
+            Ok(project)
+        });
     }
 
     fn spawn(
@@ -252,6 +263,7 @@ impl Studio {
         let then = job.then;
         self.job = None;
         match (outcome, then) {
+            (Ok(_), Then::Home) => self.go(ctx, Nav::Home),
             (Ok(project), Then::Cut) => self.go(ctx, Nav::Cut(project)),
             (Ok(project), Then::Light) => self.go(ctx, Nav::Light(project)),
             (Err(e), _) => self.error = Some(format!("{e:#}")),

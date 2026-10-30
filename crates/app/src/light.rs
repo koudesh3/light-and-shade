@@ -1,6 +1,7 @@
 //! The light room: a painting's layers on the left, the lit painting in the middle,
 //! the light on the right.
 
+use crate::paint::Painter;
 use crate::platform::Command;
 use crate::studio::{Nav, Scripted};
 use crate::{ball::Ball, design};
@@ -32,6 +33,9 @@ pub struct LightRoom {
     orbit: bool,
     view: View,
     ball: Ball,
+    /// Present while painting normals.
+    painter: Option<Painter>,
+    error: Option<String>,
 }
 
 impl LightRoom {
@@ -64,6 +68,8 @@ impl LightRoom {
                 ..View::default()
             },
             ball: Ball::default(),
+            painter: None,
+            error: None,
         })
     }
 
@@ -99,6 +105,12 @@ impl LightRoom {
                 if design::button(ui, &format!("{:.0}%", self.view.zoom * 100.0)).clicked() {
                     self.view = View::default();
                 }
+                if self.project.is_paintable() {
+                    let painting = self.painter.is_some();
+                    if design::toggle_button(ui, "Paint", painting).clicked() {
+                        self.painter = (!painting).then(|| Painter::new(&self.project));
+                    }
+                }
                 if self.project.is_cuttable() && design::button(ui, "Edit cuts").clicked() {
                     nav = Some(Nav::Cut(self.project.clone()));
                 }
@@ -114,14 +126,49 @@ impl LightRoom {
             ui.spacing_mut().item_spacing.y = 0.0;
             for i in (0..self.project.layers.len()).rev() {
                 let name = &self.project.layers[i].name;
-                if design::layer_row(ui, name, self.visible[i]).clicked() {
+                let selected = self.painter.as_ref().is_some_and(|p| p.piece == i);
+                let (row, dot) = design::layer_row(ui, name, self.visible[i], selected);
+                match &mut self.painter {
+                    Some(painter) if row.clicked() => painter.select(&self.project, i),
+                    None if row.clicked() => self.visible[i] = !self.visible[i],
+                    _ => {}
+                }
+                if dot {
                     self.visible[i] = !self.visible[i];
                 }
             }
         });
     }
 
+    /// Send the piece being painted to the GPU.
+    fn upload_painted(&mut self) {
+        if let Some(painter) = &self.painter {
+            let map = &painter.map().image;
+            let size = [map.width(), map.height()];
+            self.renderer.set_normal(
+                &self.gpu.device,
+                &self.gpu.queue,
+                painter.piece,
+                size,
+                map.as_raw(),
+            );
+        }
+    }
+
+    fn after_paint(&mut self, outcome: anyhow::Result<bool>) {
+        match outcome {
+            Ok(true) => self.upload_painted(),
+            Ok(false) => {}
+            Err(e) => self.error = Some(format!("{e:#}")),
+        }
+    }
+
     fn right_panel(&mut self, ui: &mut egui::Ui) {
+        if let Some(painter) = &mut self.painter {
+            let outcome = painter.panel(ui, &mut self.project);
+            self.after_paint(outcome);
+            design::gap(ui);
+        }
         design::heading(ui, "Light");
         ui.add_space(4.0);
         ui.vertical_centered(|ui| {
@@ -133,6 +180,9 @@ impl LightRoom {
             }
         });
         ui.add_space(8.0);
+        if self.painter.is_some() {
+            return;
+        }
         design::slider(ui, "Height", &mut self.light.height, 0.05..=1.0);
         design::slider(ui, "Strength", &mut self.strength, 0.0..=2.0);
         design::slider(ui, "Ambient", &mut self.ambient, 0.0..=1.0);
@@ -160,6 +210,15 @@ impl LightRoom {
             let d = response.drag_delta() * ppp;
             self.view.pan[0] += d.x;
             self.view.pan[1] += d.y;
+        } else if let Some(painter) = &mut self.painter {
+            let outcome = painter.pointer(
+                ui,
+                &mut self.project,
+                &self.view,
+                rect,
+                response.contains_pointer(),
+            );
+            self.after_paint(outcome);
         } else if let Some(p) = response
             .interact_pointer_pos()
             .filter(|_| response.is_pointer_button_down_on())
@@ -170,7 +229,7 @@ impl LightRoom {
             self.light.y = -(p.y - rect.center().y) / half * 1.4;
             self.orbit = false;
         }
-        if response.double_clicked() {
+        if response.double_clicked() && self.painter.is_none() {
             self.view = View::default();
         }
         if let Some(p) = response.hover_pos() {
@@ -181,6 +240,12 @@ impl LightRoom {
         let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
         debug_assert_eq!(size, [target[0] as u32, target[1] as u32]);
         ui.painter().image(id, rect, uv, Color32::WHITE);
+        if let Some(painter) = &self.painter {
+            painter.overlay(ui, &self.project, &self.view, rect, response.hover_pos());
+            if response.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+            }
+        }
     }
 
     /// Draw the painting offscreen for egui to show as an image.
@@ -267,6 +332,13 @@ impl LightRoom {
     pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Nav> {
         let ctx = ui.ctx().clone();
         self.shortcuts(&ctx);
+        if let Some(painter) = &mut self.painter {
+            let outcome = painter.keys(&ctx, &mut self.project);
+            self.after_paint(outcome);
+        }
+        if let Some(error) = &self.error {
+            design::toast(&ctx, error);
+        }
         if self.orbit {
             let a = ctx.input(|i| i.time) as f32 * 0.6;
             self.light.x = a.cos() * 0.8;
