@@ -43,7 +43,14 @@ pub struct Renderer {
     globals: wgpu::Buffer,
     group0: wgpu::BindGroup,
     layer_layout: wgpu::BindGroupLayout,
-    layers: Vec<wgpu::BindGroup>,
+    layers: Vec<LayerTextures>,
+}
+
+struct LayerTextures {
+    quad: wgpu::Buffer,
+    color: wgpu::TextureView,
+    normal: wgpu::Texture,
+    bind_group: wgpu::BindGroup,
 }
 
 impl Renderer {
@@ -179,27 +186,71 @@ impl Renderer {
                 contents: bytemuck::cast_slice(&rect),
                 usage: wgpu::BufferUsages::UNIFORM,
             });
-            layers.push(device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some(&layer.name),
-                layout: &self.layer_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: quad.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&color),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::TextureView(&normal),
-                    },
-                ],
-            }));
+            let color = color.create_view(&Default::default());
+            let bind_group = self.bind_layer(device, &quad, &color, &normal);
+            layers.push(LayerTextures {
+                quad,
+                color,
+                normal,
+                bind_group,
+            });
         }
         self.layers = layers;
         Ok(())
+    }
+
+    fn bind_layer(
+        &self,
+        device: &wgpu::Device,
+        quad: &wgpu::Buffer,
+        color: &wgpu::TextureView,
+        normal: &wgpu::Texture,
+    ) -> wgpu::BindGroup {
+        let normal = normal.create_view(&Default::default());
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("layer"),
+            layout: &self.layer_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: quad.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(color),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&normal),
+                },
+            ],
+        })
+    }
+
+    /// Replace a layer's normal map, for live painting. RGBA8 pixels.
+    pub fn set_normal(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        layer: usize,
+        size: [u32; 2],
+        rgba: &[u8],
+    ) {
+        let mip = Mip {
+            width: size[0],
+            height: size[1],
+            rgba: rgba.to_vec(),
+        };
+        let current = &self.layers[layer].normal;
+        if current.width() == size[0] && current.height() == size[1] {
+            write_mip(queue, current, 0, &mip);
+        } else {
+            let normal = upload(device, queue, &[mip]);
+            let entry = &self.layers[layer];
+            let bind_group = self.bind_layer(device, &entry.quad, &entry.color, &normal);
+            let entry = &mut self.layers[layer];
+            (entry.normal, entry.bind_group) = (normal, bind_group);
+        }
     }
 
     pub fn render(
@@ -240,14 +291,14 @@ impl Renderer {
         pass.set_bind_group(0, &self.group0, &[]);
         for (i, layer) in self.layers.iter().enumerate() {
             if frame.visible.get(i).copied().unwrap_or(true) {
-                pass.set_bind_group(1, layer, &[]);
+                pass.set_bind_group(1, &layer.bind_group, &[]);
                 pass.draw(0..6, 0..1);
             }
         }
     }
 }
 
-fn upload(device: &wgpu::Device, queue: &wgpu::Queue, mips: &[Mip]) -> wgpu::TextureView {
+fn upload(device: &wgpu::Device, queue: &wgpu::Queue, mips: &[Mip]) -> wgpu::Texture {
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: None,
         size: wgpu::Extent3d {
@@ -263,25 +314,29 @@ fn upload(device: &wgpu::Device, queue: &wgpu::Queue, mips: &[Mip]) -> wgpu::Tex
         view_formats: &[],
     });
     for (level, mip) in mips.iter().enumerate() {
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &texture,
-                mip_level: level as u32,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &mip.rgba,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(mip.width * 4),
-                rows_per_image: None,
-            },
-            wgpu::Extent3d {
-                width: mip.width,
-                height: mip.height,
-                depth_or_array_layers: 1,
-            },
-        );
+        write_mip(queue, &texture, level as u32, mip);
     }
-    texture.create_view(&Default::default())
+    texture
+}
+
+fn write_mip(queue: &wgpu::Queue, texture: &wgpu::Texture, level: u32, mip: &Mip) {
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture,
+            mip_level: level,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        &mip.rgba,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(mip.width * 4),
+            rows_per_image: None,
+        },
+        wgpu::Extent3d {
+            width: mip.width,
+            height: mip.height,
+            depth_or_array_layers: 1,
+        },
+    );
 }

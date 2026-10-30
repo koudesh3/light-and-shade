@@ -1,6 +1,6 @@
 //! Turning a dropped image into a project, and a project's cuts into layers.
 
-use crate::{Cut, Layer, Project};
+use crate::{Cut, Layer, NormalMap, Project};
 use anyhow::{Context, Result, bail};
 use image::codecs::png::{CompressionType, FilterType as PngFilter, PngEncoder};
 use image::imageops::{self, FilterType};
@@ -140,7 +140,7 @@ impl Project {
             let (x, y, piece) = cut_out(&source, cut);
             let color = PathBuf::from(format!("layers/z{z:02}_color.png"));
             save_png(&piece, &self.dir.join(&color))?;
-            layers.push(Layer {
+            let mut layer = Layer {
                 name: cut.name.clone(),
                 z: z as u32,
                 x: x as f32,
@@ -149,7 +149,15 @@ impl Project {
                 h: piece.height(),
                 color,
                 normal: FLAT_NORMAL.into(),
-            });
+            };
+            if !cut.strokes.is_empty() {
+                layer.normal = format!("layers/z{z:02}_normal.png").into();
+                save_png(
+                    &NormalMap::from_strokes(&layer, &cut.strokes).image,
+                    &self.dir.join(&layer.normal),
+                )?;
+            }
+            layers.push(layer);
         }
         self.layers = layers;
         self.save()?;
@@ -301,10 +309,12 @@ mod tests {
             Cut {
                 name: "Back".into(),
                 points: vec![[10.0, 10.0], [40.0, 10.0], [40.0, 40.0], [10.0, 40.0]],
+                strokes: Vec::new(),
             },
             Cut {
                 name: "Front".into(),
                 points: vec![[90.0, 70.0], [99.0, 70.0], [99.0, 79.0]],
+                strokes: Vec::new(),
             },
         ];
         project.bake().unwrap();
@@ -325,6 +335,37 @@ mod tests {
                 .dir
                 .ends_with("little-fern-2")
         );
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn painted_normals_survive_a_rebake() {
+        let root = std::env::temp_dir().join(format!("las-rebake-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let image = root.join("leaf.png");
+        RgbaImage::from_pixel(60, 60, image::Rgba([20, 120, 40, 255]))
+            .save(&image)
+            .unwrap();
+        let mut project = Project::create(&root, &image).unwrap();
+        project.cuts = vec![Cut {
+            name: "Leaf".into(),
+            points: vec![[10.0, 10.0], [50.0, 10.0], [50.0, 50.0], [10.0, 50.0]],
+            strokes: vec![crate::Stroke {
+                kind: crate::StrokeKind::Fill,
+                normal: [1.0, 0.0, 0.0],
+                radius: 0.0,
+                points: Vec::new(),
+            }],
+        }];
+        project.bake().unwrap();
+        assert!(project.is_paintable());
+
+        let loaded = Project::load(&project.dir).unwrap();
+        assert_eq!(loaded.cuts[0].strokes.len(), 1);
+        let map = image::open(loaded.dir.join(&loaded.layers[0].normal))
+            .unwrap()
+            .into_rgba8();
+        assert_eq!(*map.get_pixel(5, 5), crate::encode_normal([1.0, 0.0, 0.0]));
         std::fs::remove_dir_all(&root).unwrap();
     }
 

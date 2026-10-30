@@ -1,6 +1,7 @@
 //! Project format and pure scene maths. No GPU and no UI in here.
 
 mod bake;
+mod paint;
 
 use anyhow::{Context, Result};
 use image::imageops::{self, FilterType};
@@ -8,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 pub use bake::{THUMBNAIL, coverage, painting_name, slug};
+pub use paint::{NormalMap, Stroke, StrokeKind, decode_normal, encode_normal};
 
 /// Below this many pixels on the longest side, an image looks soft at full canvas size.
 const LOW_RESOLUTION: u32 = 1600;
@@ -17,6 +19,9 @@ const LOW_RESOLUTION: u32 = 1600;
 pub struct Cut {
     pub name: String,
     pub points: Vec<[f32; 2]>,
+    /// Painted normals, oldest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub strokes: Vec<Stroke>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +73,21 @@ impl Project {
         std::fs::rename(&temp, &path).with_context(|| format!("replacing {}", path.display()))
     }
 
+    /// Whether the normals can be painted: there are cuts, and the layers match them.
+    pub fn is_paintable(&self) -> bool {
+        self.is_cuttable() && !self.cuts.is_empty() && self.cuts.len() == self.layers.len()
+    }
+
+    /// Save a piece's painted normals, as a map for the renderer and strokes to edit later.
+    pub fn store_normals(&mut self, piece: usize, map: &NormalMap) -> Result<()> {
+        let path = PathBuf::from(format!("layers/z{piece:02}_normal.png"));
+        map.image
+            .save(self.dir.join(&path))
+            .with_context(|| format!("writing {}", path.display()))?;
+        self.layers[piece].normal = path;
+        self.save()
+    }
+
     /// Whether the source is too small to stay sharp on a large canvas.
     pub fn is_low_resolution(&self) -> bool {
         self.is_cuttable() && self.width.max(self.height) < LOW_RESOLUTION
@@ -93,8 +113,9 @@ pub enum MapKind {
     Normal,
 }
 
-/// Decode an image and build its mip chain. Filtering must not pull the black behind
-/// a leaf into its edges, so colour is premultiplied and normals are grown outward.
+/// Decode an image and build its mips. Filtering must not pull the black behind a leaf
+/// into its edges, so colour is premultiplied and normals are grown outward. Normals get
+/// a single level: averaging them would blur painted facets, and painting replaces them live.
 pub fn load_mips(path: &Path, kind: MapKind) -> Result<Vec<Mip>> {
     let mut img = image::open(path)
         .with_context(|| format!("decoding {}", path.display()))?
@@ -113,7 +134,7 @@ pub fn load_mips(path: &Path, kind: MapKind) -> Result<Vec<Mip>> {
     let mut mips = Vec::new();
     loop {
         let (width, height) = img.dimensions();
-        let next = (width > 1 || height > 1).then(|| {
+        let next = (kind == MapKind::Color && (width > 1 || height > 1)).then(|| {
             imageops::resize(
                 &img,
                 (width / 2).max(1),

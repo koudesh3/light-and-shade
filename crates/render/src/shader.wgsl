@@ -30,7 +30,7 @@ fn to_srgb(c: vec3f) -> vec3f {
 
 @fragment fn fs(v: VsOut) -> @location(0) vec4f {
   let c = textureSample(ct, smp, v.uv);
-  let nr = textureSample(nt, smp, v.uv).rgb;
+  let nr = textureSampleLevel(nt, smp, v.uv, 0.0).rgb;
   if (c.a < 0.002) { discard; }
   let albedo = c.rgb / c.a;
   var col = albedo;
