@@ -55,5 +55,10 @@ pub fn apply(ctx: &egui::Context) {
 /// A small caps-style section label.
 pub fn section(ui: &mut egui::Ui, text: &str) {
     ui.add_space(4.0);
-    ui.label(egui::RichText::new(text.to_uppercase()).size(10.0).strong().color(MUTED));
+    ui.label(
+        egui::RichText::new(text.to_uppercase())
+            .size(10.0)
+            .strong()
+            .color(MUTED),
+    );
 }

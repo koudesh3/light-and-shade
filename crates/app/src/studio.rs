@@ -1,6 +1,7 @@
 //! The studio window: library and layers on the left, the lit painting in the middle,
 //! the light on the right.
 
+use crate::platform::{Command, Menu};
 use crate::{ball::Ball, library, theme};
 use anyhow::{Context, Result, anyhow};
 use eframe::egui::{self, Color32, Key, Pos2, Rect, RichText, Sense, Slider, TextureId};
@@ -73,14 +74,20 @@ pub struct Studio {
     error: Option<String>,
     scripted: Scripted,
     frames: u32,
+    menu: Menu,
 }
 
 impl Studio {
     pub fn new(cc: &eframe::CreationContext, scripted: Scripted) -> Result<Self> {
-        let gpu = cc.wgpu_render_state.clone().ok_or_else(|| anyhow!("this window has no wgpu renderer"))?;
+        let gpu = cc
+            .wgpu_render_state
+            .clone()
+            .ok_or_else(|| anyhow!("this window has no wgpu renderer"))?;
         let root = library::root();
         let library = root.as_deref().map(library::scan).unwrap_or_default();
-        let first = library.first().context("no projects found: set LAS_PROJECTS to a folder of paintings")?;
+        let first = library
+            .first()
+            .context("no projects found: set LAS_PROJECTS to a folder of paintings")?;
         let project = Project::load(first)?;
         let mut renderer = Renderer::new(&gpu.device);
         renderer.load(&gpu.device, &gpu.queue, &project)?;
@@ -93,7 +100,11 @@ impl Studio {
             library,
             project,
             selected: None,
-            light: Light { x: -0.55, y: 0.5, height: 0.55 },
+            light: Light {
+                x: -0.55,
+                y: 0.5,
+                height: 0.55,
+            },
             ambient: 0.34,
             strength: 0.95,
             sheen: 0.08,
@@ -106,6 +117,7 @@ impl Studio {
             error: None,
             scripted,
             frames: 0,
+            menu: Menu::install(),
         };
         if let Some(mode) = studio.scripted.mode {
             studio.mode = mode;
@@ -136,6 +148,31 @@ impl Studio {
         }
     }
 
+    fn pick_folder(&self) -> Option<PathBuf> {
+        let mut dialog = rfd::FileDialog::new().set_title("Open a painting folder");
+        if let Some(root) = &self.root {
+            dialog = dialog.set_directory(root);
+        }
+        dialog.pick_folder()
+    }
+
+    fn menu_commands(&mut self) {
+        while let Some(command) = self.menu.poll() {
+            match command {
+                Command::Open => {
+                    if let Some(dir) = self.pick_folder() {
+                        self.open(dir);
+                    }
+                }
+                Command::Fit => self.view = View::default(),
+                Command::Lit => self.mode = Mode::Lit,
+                Command::Normals => self.mode = Mode::Normals,
+                Command::Original => self.mode = Mode::Original,
+                Command::Orbit => self.orbit = !self.orbit,
+            }
+        }
+    }
+
     fn painting_size(&self) -> [f32; 2] {
         [self.project.width as f32, self.project.height as f32]
     }
@@ -150,13 +187,18 @@ impl Studio {
                 (Mode::Normals, "Normals", "2"),
                 (Mode::Original, "Original", "3"),
             ] {
-                ui.selectable_value(&mut self.mode, mode, label).on_hover_text(hint);
+                ui.selectable_value(&mut self.mode, mode, label)
+                    .on_hover_text(hint);
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("Fit").on_hover_text("F").clicked() {
                     self.view = View::default();
                 }
-                ui.label(RichText::new(format!("{:.0}%", self.view.zoom * 100.0)).color(theme::MUTED).monospace());
+                ui.label(
+                    RichText::new(format!("{:.0}%", self.view.zoom * 100.0))
+                        .color(theme::MUTED)
+                        .monospace(),
+                );
             });
         });
     }
@@ -165,17 +207,16 @@ impl Studio {
         theme::section(ui, "Library");
         let mut open = None;
         for dir in &self.library {
-            let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let name = dir
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
             if ui.selectable_label(*dir == self.project.dir, name).clicked() && *dir != self.project.dir {
                 open = Some(dir.clone());
             }
         }
         if ui.button("Open folder…").clicked() {
-            let mut dialog = rfd::FileDialog::new().set_title("Open a painting folder");
-            if let Some(root) = &self.root {
-                dialog = dialog.set_directory(root);
-            }
-            open = dialog.pick_folder();
+            open = self.pick_folder();
         }
         if let Some(dir) = open {
             self.open(dir);
@@ -203,25 +244,31 @@ impl Studio {
     fn right_panel(&mut self, ui: &mut egui::Ui) {
         theme::section(ui, "Light");
         ui.vertical_centered(|ui| {
-            if self.ball.show(ui, &mut self.light, self.ambient, self.strength, self.sheen) {
+            if self
+                .ball
+                .show(ui, &mut self.light, self.ambient, self.strength, self.sheen)
+            {
                 self.orbit = false;
             }
         });
         ui.add_space(4.0);
-        egui::Grid::new("light").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
-            ui.label("Height");
-            ui.add(Slider::new(&mut self.light.height, 0.05..=1.0).fixed_decimals(2));
-            ui.end_row();
-            ui.label("Strength");
-            ui.add(Slider::new(&mut self.strength, 0.0..=2.0).fixed_decimals(2));
-            ui.end_row();
-            ui.label("Ambient");
-            ui.add(Slider::new(&mut self.ambient, 0.0..=1.0).fixed_decimals(2));
-            ui.end_row();
-            ui.label("Sheen");
-            ui.add(Slider::new(&mut self.sheen, 0.0..=1.0).fixed_decimals(2));
-            ui.end_row();
-        });
+        egui::Grid::new("light")
+            .num_columns(2)
+            .spacing([10.0, 6.0])
+            .show(ui, |ui| {
+                ui.label("Height");
+                ui.add(Slider::new(&mut self.light.height, 0.05..=1.0).fixed_decimals(2));
+                ui.end_row();
+                ui.label("Strength");
+                ui.add(Slider::new(&mut self.strength, 0.0..=2.0).fixed_decimals(2));
+                ui.end_row();
+                ui.label("Ambient");
+                ui.add(Slider::new(&mut self.ambient, 0.0..=1.0).fixed_decimals(2));
+                ui.end_row();
+                ui.label("Sheen");
+                ui.add(Slider::new(&mut self.sheen, 0.0..=1.0).fixed_decimals(2));
+                ui.end_row();
+            });
         ui.add_space(4.0);
         ui.checkbox(&mut self.orbit, "Orbit the light").on_hover_text("O");
         ui.add_space(6.0);
@@ -249,15 +296,22 @@ impl Studio {
         let rect = ui.max_rect();
         let response = ui.allocate_rect(rect, Sense::click_and_drag());
         let ppp = ui.pixels_per_point();
-        let target = [(rect.width() * ppp).round().max(1.0), (rect.height() * ppp).round().max(1.0)];
+        let target = [
+            (rect.width() * ppp).round().max(1.0),
+            (rect.height() * ppp).round().max(1.0),
+        ];
         let painting = self.painting_size();
-        let panning = ui.input(|i| i.key_down(Key::Space) || i.pointer.middle_down() || i.pointer.secondary_down());
+        let panning =
+            ui.input(|i| i.key_down(Key::Space) || i.pointer.middle_down() || i.pointer.secondary_down());
 
         if response.dragged() && panning {
             let d = response.drag_delta() * ppp;
             self.view.pan[0] += d.x;
             self.view.pan[1] += d.y;
-        } else if let Some(p) = response.interact_pointer_pos().filter(|_| response.is_pointer_button_down_on()) {
+        } else if let Some(p) = response
+            .interact_pointer_pos()
+            .filter(|_| response.is_pointer_button_down_on())
+        {
             // Drag across the painting to move the light, as in the browser study.
             let half = rect.width().min(rect.height()) / 2.0;
             self.light.x = (p.x - rect.center().x) / half * 1.4;
@@ -289,7 +343,11 @@ impl Studio {
             self.resize(size);
         }
         let t = self.target.as_ref().expect("resize made a target");
-        let background = if self.dark_paper { [0.07, 0.086, 0.075] } else { [1.0, 1.0, 1.0] };
+        let background = if self.dark_paper {
+            [0.07, 0.086, 0.075]
+        } else {
+            [1.0, 1.0, 1.0]
+        };
         let frame = Frame {
             transform: self.view.transform(target, self.painting_size()),
             light: self.light.direction(),
@@ -302,7 +360,8 @@ impl Studio {
             visible: &self.visible,
         };
         let mut encoder = self.gpu.device.create_command_encoder(&Default::default());
-        self.renderer.render(&self.gpu.queue, &mut encoder, &t.view, &frame);
+        self.renderer
+            .render(&self.gpu.queue, &mut encoder, &t.view, &frame);
         self.gpu.queue.submit([encoder.finish()]);
         (t.id, t.size)
     }
@@ -310,7 +369,11 @@ impl Studio {
     fn resize(&mut self, size: [u32; 2]) {
         let texture = self.gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("viewport"),
-            size: wgpu::Extent3d { width: size[0], height: size[1], depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: size[0],
+                height: size[1],
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -336,7 +399,11 @@ impl Studio {
             return;
         }
         ctx.input(|i| {
-            for (key, mode) in [(Key::Num1, Mode::Lit), (Key::Num2, Mode::Normals), (Key::Num3, Mode::Original)] {
+            for (key, mode) in [
+                (Key::Num1, Mode::Lit),
+                (Key::Num2, Mode::Normals),
+                (Key::Num3, Mode::Original),
+            ] {
                 if i.key_pressed(key) {
                     self.mode = mode;
                 }
@@ -352,12 +419,18 @@ impl Studio {
 
     fn capture(&mut self, ctx: &egui::Context) {
         self.frames += 1;
-        let Some(path) = self.scripted.shot.clone() else { return };
+        let Some(path) = self.scripted.shot.clone() else {
+            return;
+        };
         ctx.request_repaint();
         if self.frames == 30 {
             let callback = egui::ScreenshotCallback::new(move |image| {
                 let [w, h] = image.size;
-                let rgba: Vec<u8> = image.pixels.iter().flat_map(|c| c.to_srgba_unmultiplied()).collect();
+                let rgba: Vec<u8> = image
+                    .pixels
+                    .iter()
+                    .flat_map(|c| c.to_srgba_unmultiplied())
+                    .collect();
                 match image::save_buffer(&path, &rgba, w as u32, h as u32, image::ColorType::Rgba8) {
                     Ok(()) => std::process::exit(0),
                     Err(e) => {
@@ -405,6 +478,7 @@ impl eframe::App for Studio {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        self.menu_commands();
         self.shortcuts(&ctx);
         if self.orbit {
             let a = ctx.input(|i| i.time) as f32 * 0.6;
@@ -412,7 +486,11 @@ impl eframe::App for Studio {
             self.light.y = a.sin() * 0.8;
             ctx.request_repaint();
         }
-        let edge = |fill, x, y| egui::Frame::new().fill(fill).inner_margin(egui::Margin::symmetric(x, y));
+        let edge = |fill, x, y| {
+            egui::Frame::new()
+                .fill(fill)
+                .inner_margin(egui::Margin::symmetric(x, y))
+        };
         egui::Panel::top("toolbar")
             .exact_size(38.0)
             .frame(edge(theme::PANEL, 10, 0))

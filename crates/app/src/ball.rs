@@ -13,7 +13,14 @@ pub struct Ball {
 }
 
 impl Ball {
-    pub fn show(&mut self, ui: &mut egui::Ui, light: &mut Light, ambient: f32, strength: f32, sheen: f32) -> bool {
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        light: &mut Light,
+        ambient: f32,
+        strength: f32,
+        sheen: f32,
+    ) -> bool {
         let (rect, response) = ui.allocate_exact_size(Vec2::splat(112.0), Sense::click_and_drag());
         let mut changed = false;
         if let Some(pos) = response.interact_pointer_pos() {
@@ -29,7 +36,9 @@ impl Ball {
             let image = shade(px as usize, light.direction(), ambient, strength, sheen);
             match &mut self.texture {
                 Some(t) => t.set(image, TextureOptions::LINEAR),
-                None => self.texture = Some(ui.ctx().load_texture("light ball", image, TextureOptions::LINEAR)),
+                None => {
+                    self.texture = Some(ui.ctx().load_texture("light ball", image, TextureOptions::LINEAR))
+                }
             }
             self.drawn = Some(key);
         }
@@ -43,7 +52,11 @@ impl Ball {
         }
         let d = light.direction();
         let dot = rect.center() + egui::vec2(d[0], -d[1]) * rect.width() / 2.0;
-        ui.painter().circle_stroke(dot, 4.0, (1.5, Color32::from_rgba_unmultiplied(255, 255, 255, 210)));
+        ui.painter().circle_stroke(
+            dot,
+            4.0,
+            (1.5, Color32::from_rgba_unmultiplied(255, 255, 255, 210)),
+        );
         changed
     }
 }
@@ -68,8 +81,12 @@ fn shade(size: usize, l: [f32; 3], ambient: f32, strength: f32, sheen: f32) -> C
             let dif = (nx * l[0] + ny * l[1] + nz * l[2]).max(0.0);
             let spec = (nx * h[0] + ny * h[1] + nz * h[2]).max(0.0).powf(28.0) * sheen;
             let v = ((ambient + strength * dif) * 170.0 + spec * 255.0).min(255.0) * edge;
-            pixels[y * size + x] =
-                Color32::from_rgba_premultiplied((v * 0.92) as u8, v as u8, (v * 0.9) as u8, (edge * 255.0) as u8);
+            pixels[y * size + x] = Color32::from_rgba_premultiplied(
+                (v * 0.92) as u8,
+                v as u8,
+                (v * 0.9) as u8,
+                (edge * 255.0) as u8,
+            );
         }
     }
     ColorImage::new([size, size], pixels)

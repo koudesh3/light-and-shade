@@ -2,7 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
-/// `LAS_PROJECTS`, else the nearest `projects/` folder above the working directory or the binary.
+/// `LAS_PROJECTS`, else the nearest `projects/` folder above the working directory or the
+/// binary. A macOS bundle keeps its own copy in `Contents/Resources`.
 pub fn root() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os("LAS_PROJECTS") {
         return Some(dir.into());
@@ -12,7 +13,7 @@ pub fn root() -> Option<PathBuf> {
         .iter()
         .flatten()
         .flat_map(|start| start.ancestors())
-        .map(|dir| dir.join("projects"))
+        .flat_map(|dir| [dir.join("projects"), dir.join("Resources/projects")])
         .find(|dir| dir.is_dir())
 }
 

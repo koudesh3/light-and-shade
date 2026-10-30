@@ -2,6 +2,7 @@
 
 mod ball;
 mod library;
+mod platform;
 mod studio;
 mod theme;
 

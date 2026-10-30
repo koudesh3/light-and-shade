@@ -76,9 +76,18 @@ pub fn load_mips(path: &Path, kind: MapKind) -> Result<Vec<Mip>> {
     loop {
         let (width, height) = img.dimensions();
         let next = (width > 1 || height > 1).then(|| {
-            imageops::resize(&img, (width / 2).max(1), (height / 2).max(1), FilterType::Triangle)
+            imageops::resize(
+                &img,
+                (width / 2).max(1),
+                (height / 2).max(1),
+                FilterType::Triangle,
+            )
         });
-        mips.push(Mip { width, height, rgba: img.into_raw() });
+        mips.push(Mip {
+            width,
+            height,
+            rgba: img.into_raw(),
+        });
         match next {
             Some(n) => img = n,
             None => return Ok(mips),
@@ -140,7 +149,9 @@ pub struct Light {
 
 impl Light {
     pub fn direction(self) -> [f32; 3] {
-        let l = (self.x * self.x + self.y * self.y + self.height * self.height).sqrt().max(1e-6);
+        let l = (self.x * self.x + self.y * self.y + self.height * self.height)
+            .sqrt()
+            .max(1e-6);
         [self.x / l, self.y / l, self.height / l]
     }
 }
@@ -154,7 +165,10 @@ pub struct View {
 
 impl Default for View {
     fn default() -> Self {
-        Self { zoom: 1.0, pan: [0.0, 0.0] }
+        Self {
+            zoom: 1.0,
+            pan: [0.0, 0.0],
+        }
     }
 }
 
@@ -179,7 +193,12 @@ impl View {
     pub fn transform(&self, target: [f32; 2], painting: [f32; 2]) -> [f32; 4] {
         let s = self.scale(target, painting);
         let o = self.origin(target, painting);
-        [2.0 * s / target[0], -2.0 * s / target[1], 2.0 * o[0] / target[0] - 1.0, 1.0 - 2.0 * o[1] / target[1]]
+        [
+            2.0 * s / target[0],
+            -2.0 * s / target[1],
+            2.0 * o[0] / target[0] - 1.0,
+            1.0 - 2.0 * o[1] / target[1],
+        ]
     }
 
     /// Zoom by `factor`, keeping the painting point under `at` (target pixels) still.
@@ -210,7 +229,12 @@ mod tests {
         let mips = load_mips(&p.dir.join(&p.layers[1].color), MapKind::Color).unwrap();
         let last = mips.last().unwrap();
         assert_eq!((last.width, last.height), (1, 1));
-        assert!(mips[0].rgba.chunks(4).all(|c| c[0] <= c[3] && c[1] <= c[3] && c[2] <= c[3]));
+        assert!(
+            mips[0]
+                .rgba
+                .chunks(4)
+                .all(|c| c[0] <= c[3] && c[1] <= c[3] && c[2] <= c[3])
+        );
     }
 
     #[test]
@@ -224,7 +248,12 @@ mod tests {
 
     #[test]
     fn light_direction_is_unit() {
-        let d = Light { x: -0.55, y: 0.5, height: 0.55 }.direction();
+        let d = Light {
+            x: -0.55,
+            y: 0.5,
+            height: 0.55,
+        }
+        .direction();
         assert!((d.iter().map(|c| c * c).sum::<f32>() - 1.0).abs() < 1e-5);
     }
 
