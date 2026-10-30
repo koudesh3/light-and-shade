@@ -1,0 +1,203 @@
+<title>Pothos Light Study</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: the lit painting fills the screen; one compact control card floats bottom-left (docks below on phones) */
+:root{
+  --bg:#f4f5f2; --panel:rgba(255,255,255,0.92); --fg:#1f2620; --muted:#5d6a5f; --line:#d3d9d2; --ok:#2f7d4a;
+  --f-ui:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#121613;--panel:rgba(29,36,31,0.92);--fg:#e7ece6;--muted:#9aa89d;--line:#2f3a32;--ok:#6fcf8f;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#121613;--panel:rgba(29,36,31,0.92);--fg:#e7ece6;--muted:#9aa89d;--line:#2f3a32;--ok:#6fcf8f;color-scheme:dark}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-ui);overflow:hidden}
+#stage{position:fixed;inset:0;touch-action:none;cursor:crosshair}
+#gl{width:100%;height:100%;display:block}
+.card{position:fixed;left:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));width:280px;max-width:calc(100% - 32px);background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:0 6px 24px rgba(0,0,0,0.08)}
+.top{display:flex;gap:12px;align-items:center}
+h1{font-size:14px;font-weight:600;margin:0}
+.muted{color:var(--muted);font-size:12px;line-height:1.4}
+#ball{width:76px;height:76px;border-radius:50%;flex:none;cursor:grab;touch-action:none}
+label.sl{display:grid;grid-template-columns:62px 1fr 34px;gap:8px;align-items:center;font-size:12px;color:var(--muted)}
+label.sl output{font:400 11px var(--f-mono);text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--fg)}
+.row{display:flex;gap:6px;flex-wrap:wrap}
+button{font:500 12px var(--f-ui);color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:7px;padding:6px 9px;cursor:pointer}
+button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+.tag{font:400 11px var(--f-mono);color:var(--muted)}
+#err{position:fixed;inset:0;display:grid;place-items:center;padding-inline:16px;text-align:center;font-size:14px;color:var(--muted)}
+</style>
+
+<div id="stage"><canvas id="gl"></canvas></div>
+<div id="err" hidden></div>
+<div class="card">
+  <div class="top">
+    <canvas id="ball" width="76" height="76" aria-label="Light direction: drag to move"></canvas>
+    <div style="min-width:0">
+      <h1>Light</h1>
+      <div class="muted">Drag on the painting or the ball to move the light.</div>
+      <div class="tag" id="api">starting…</div>
+    </div>
+  </div>
+  <label class="sl" for="height">Height<input id="height" type="range" min="5" max="100" value="55"><output id="heightv">0.55</output></label>
+  <label class="sl" for="inten">Strength<input id="inten" type="range" min="0" max="200" value="95"><output id="intenv">0.95</output></label>
+  <label class="sl" for="amb">Ambient<input id="amb" type="range" min="0" max="100" value="34"><output id="ambv">0.34</output></label>
+  <label class="sl" for="spec">Sheen<input id="spec" type="range" min="0" max="100" value="8"><output id="specv">0.08</output></label>
+  <div class="row">
+    <button id="orbit" aria-pressed="false">Orbit</button>
+    <button id="mLit" aria-pressed="true">Lit</button>
+    <button id="mNorm" aria-pressed="false">Normals</button>
+    <button id="mFlat" aria-pressed="false">Original</button>
+    <button id="bg" aria-pressed="false">Dark bg</button>
+  </div>
+</div>
+
+<script>
+(async()=>{
+const A=__ASSETS__;
+const $=id=>document.getElementById(id);
+const cv=$('gl'),stage=$('stage');
+const S={lx:-0.55,ly:0.5,height:0.55,inten:0.95,amb:0.34,spec:0.08,mode:0,orbit:false,dark:false};
+let lightDir=[0,0,1];
+function updLight(){const v=[S.lx,S.ly,S.height];const l=Math.hypot(...v);lightDir=v.map(c=>c/l);drawBall();req()}
+
+// ---- load textures as ImageBitmaps
+function loadImg(src){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('An image layer failed to load.'));im.src=src})}
+async function bmp(src){const im=await loadImg(src);try{return await createImageBitmap(im,{premultiplyAlpha:'none',colorSpaceConversion:'none'})}catch(_){return im}}
+let layers;
+try{layers=await Promise.all(A.layers.map(async L=>({...L,cimg:await bmp(L.color),nimg:await bmp(L.normal)})))}
+catch(err){$('api').textContent='load failed';$('err').hidden=false;$('err').textContent='The layers didn’t load: '+err.message;return}
+
+// ---- view transform: fit painting into canvas
+function xf(){const w=cv.width,h=cv.height,pad=0.92;const d=w/Math.max(1,stage.clientWidth);
+  const left=stage.clientWidth>760?312*d:0, bottom=stage.clientWidth>760?0:Math.min(h*0.45,360*d);
+  const aw=w-left, ah=h-bottom;const s=Math.min(aw/A.w,ah/A.h)*pad;const ox=left+(aw-A.w*s)/2,oy=(ah-A.h*s)/2;
+  return [2*s/w,-2*s/h,2*ox/w-1,1-2*oy/h]}
+function bgColor(){return S.dark?[0.07,0.086,0.075]:[1,1,1]}
+
+let renderer=null, pending=false;
+function req(){if(pending||!renderer)return;pending=true;requestAnimationFrame(t=>{pending=false;if(S.orbit){const a=t/1000*0.6;S.lx=Math.cos(a)*0.8;S.ly=Math.sin(a)*0.8;const v=[S.lx,S.ly,S.height],l=Math.hypot(...v);lightDir=v.map(c=>c/l);drawBall();req()}renderer.draw()})}
+function resize(){const d=Math.min(window.devicePixelRatio||1,2);cv.width=Math.round(stage.clientWidth*d);cv.height=Math.round(stage.clientHeight*d);if(renderer)renderer.resize&&renderer.resize();req()}
+
+// ================= WebGPU =================
+async function initWebGPU(){
+  if(!navigator.gpu)return null;
+  const adapter=await navigator.gpu.requestAdapter();if(!adapter)return null;
+  const device=await adapter.requestDevice();
+  const ctx=cv.getContext('webgpu');const fmt=navigator.gpu.getPreferredCanvasFormat();
+  ctx.configure({device,format:fmt,alphaMode:'premultiplied'});
+  const code=`
+struct G{ xf:vec4f, light:vec4f, p:vec4f };   // p = ambient, strength, mode, sheen
+struct R{ rect:vec4f };
+@group(0) @binding(0) var<uniform> g:G;
+@group(1) @binding(0) var<uniform> r:R;
+@group(1) @binding(1) var smp:sampler;
+@group(1) @binding(2) var ct:texture_2d<f32>;
+@group(1) @binding(3) var nt:texture_2d<f32>;
+struct VO{ @builtin(position) pos:vec4f, @location(0) uv:vec2f };
+@vertex fn vs(@builtin(vertex_index) i:u32)->VO{
+  var q=array<vec2f,6>(vec2f(0,0),vec2f(1,0),vec2f(0,1),vec2f(0,1),vec2f(1,0),vec2f(1,1));
+  let uv=q[i]; let p=r.rect.xy+uv*r.rect.zw;
+  var o:VO; o.pos=vec4f(p.x*g.xf.x+g.xf.z, p.y*g.xf.y+g.xf.w, 0.0, 1.0); o.uv=uv; return o;
+}
+@fragment fn fs(v:VO)->@location(0) vec4f{
+  let c=textureSample(ct,smp,v.uv);
+  let nr=textureSample(nt,smp,v.uv).rgb;
+  if(c.a<0.002){discard;}
+  let n=normalize(nr*2.0-1.0);
+  let L=normalize(g.light.xyz);
+  var col=c.rgb;
+  if(g.p.z<0.5){
+    let d=max(dot(n,L),0.0);
+    let h=normalize(L+vec3f(0,0,1));
+    let s=pow(max(dot(n,h),0.0),28.0)*g.p.w;
+    col=c.rgb*(g.p.x+g.p.y*d)+vec3f(s);
+  } else if(g.p.z<1.5){ col=nr; }
+  return vec4f(clamp(col,vec3f(0),vec3f(1))*c.a, c.a);
+}`;
+  const mod=device.createShaderModule({code});
+  const pipe=device.createRenderPipeline({layout:'auto',vertex:{module:mod,entryPoint:'vs'},
+    fragment:{module:mod,entryPoint:'fs',targets:[{format:fmt,blend:{color:{srcFactor:'one',dstFactor:'one-minus-src-alpha',operation:'add'},alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha',operation:'add'}}}]},
+    primitive:{topology:'triangle-list'}});
+  const gbuf=device.createBuffer({size:48,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+  const gbg=device.createBindGroup({layout:pipe.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:gbuf}}]});
+  const smp=device.createSampler({magFilter:'linear',minFilter:'linear'});
+  const tex=im=>{const t=device.createTexture({size:[im.width,im.height],format:'rgba8unorm',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST|GPUTextureUsage.RENDER_ATTACHMENT});device.queue.copyExternalImageToTexture({source:im},{texture:t},[im.width,im.height]);return t};
+  const items=layers.map(L=>{const ub=device.createBuffer({size:16,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});device.queue.writeBuffer(ub,0,new Float32Array([L.x,L.y,L.w,L.h]));
+    return device.createBindGroup({layout:pipe.getBindGroupLayout(1),entries:[{binding:0,resource:{buffer:ub}},{binding:1,resource:smp},{binding:2,resource:tex(L.cimg).createView()},{binding:3,resource:tex(L.nimg).createView()}]})});
+  return {name:'WebGPU',draw(){
+    device.queue.writeBuffer(gbuf,0,new Float32Array([...xf(),...lightDir,0,S.amb,S.inten,S.mode,S.spec]));
+    const enc=device.createCommandEncoder();const [r,g,b]=bgColor();
+    const pass=enc.beginRenderPass({colorAttachments:[{view:ctx.getCurrentTexture().createView(),clearValue:{r,g,b,a:1},loadOp:'clear',storeOp:'store'}]});
+    pass.setPipeline(pipe);pass.setBindGroup(0,gbg);items.forEach(bg=>{pass.setBindGroup(1,bg);pass.draw(6)});pass.end();device.queue.submit([enc.finish()]);
+  }};
+}
+
+// ================= WebGL2 fallback =================
+function initWebGL2(){
+  const gl=cv.getContext('webgl2',{premultipliedAlpha:true,alpha:false});if(!gl)return null;
+  const vs=`#version 300 es
+uniform vec4 xf; uniform vec4 rect; out vec2 uv;
+void main(){ vec2 q[6]=vec2[6](vec2(0,0),vec2(1,0),vec2(0,1),vec2(0,1),vec2(1,0),vec2(1,1)); uv=q[gl_VertexID];
+  vec2 p=rect.xy+uv*rect.zw; gl_Position=vec4(p.x*xf.x+xf.z,p.y*xf.y+xf.w,0,1);}`;
+  const fs=`#version 300 es
+precision highp float; uniform sampler2D ct,nt; uniform vec4 light,pr; in vec2 uv; out vec4 o;
+void main(){ vec4 c=texture(ct,uv); vec3 nr=texture(nt,uv).rgb; if(c.a<0.002)discard;
+  vec3 n=normalize(nr*2.0-1.0), L=normalize(light.xyz), col=c.rgb;
+  if(pr.z<0.5){ float d=max(dot(n,L),0.0); vec3 h=normalize(L+vec3(0,0,1)); col=c.rgb*(pr.x+pr.y*d)+vec3(pow(max(dot(n,h),0.0),28.0)*pr.w); }
+  else if(pr.z<1.5) col=nr;
+  o=vec4(clamp(col,0.0,1.0)*c.a,c.a);}`;
+  const sh=(t,s)=>{const x=gl.createShader(t);gl.shaderSource(x,s);gl.compileShader(x);if(!gl.getShaderParameter(x,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(x));return x};
+  const pg=gl.createProgram();gl.attachShader(pg,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pg,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(pg);gl.useProgram(pg);
+  const U=n=>gl.getUniformLocation(pg,n);gl.uniform1i(U('ct'),0);gl.uniform1i(U('nt'),1);
+  gl.bindVertexArray(gl.createVertexArray());
+  gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL,gl.NONE);gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);
+  const tex=im=>{const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,im);
+    [gl.TEXTURE_MIN_FILTER,gl.TEXTURE_MAG_FILTER].forEach(p=>gl.texParameteri(gl.TEXTURE_2D,p,gl.LINEAR));[gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T].forEach(p=>gl.texParameteri(gl.TEXTURE_2D,p,gl.CLAMP_TO_EDGE));return t};
+  const items=layers.map(L=>({r:[L.x,L.y,L.w,L.h],c:tex(L.cimg),n:tex(L.nimg)}));
+  gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
+  return {name:'WebGL2 (WebGPU unavailable here)',draw(){
+    gl.viewport(0,0,cv.width,cv.height);const [r,g,b]=bgColor();gl.clearColor(r,g,b,1);gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.uniform4fv(U('xf'),xf());gl.uniform4f(U('light'),...lightDir,0);gl.uniform4f(U('pr'),S.amb,S.inten,S.mode,S.spec);
+    items.forEach(it=>{gl.uniform4fv(U('rect'),it.r);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,it.c);gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,it.n);gl.drawArrays(gl.TRIANGLES,0,6)});
+  }};
+}
+
+// ---- light ball widget
+const ball=$('ball'),bctx=ball.getContext('2d');
+function drawBall(){const d=window.devicePixelRatio||1,Sz=Math.round(76*d);if(ball.width!==Sz){ball.width=ball.height=Sz}
+  const im=bctx.createImageData(Sz,Sz),o=im.data,R=Sz/2,[lx,ly,lz]=lightDir;
+  for(let y=0;y<Sz;y++)for(let x=0;x<Sz;x++){const nx=(x+0.5-R)/R,ny=-(y+0.5-R)/R,r2=nx*nx+ny*ny,p=(y*Sz+x)*4;if(r2>1){o[p+3]=0;continue}
+    const nz=Math.sqrt(1-r2),dd=Math.max(0,nx*lx+ny*ly+nz*lz);const hx=lx,hy=ly,hz=lz+1,hl=Math.hypot(hx,hy,hz);const sp=Math.pow(Math.max(0,(nx*hx+ny*hy+nz*hz)/hl),28)*S.spec;
+    const v=Math.min(255,(S.amb+S.inten*dd)*170+sp*255);o[p]=v*0.92;o[p+1]=v;o[p+2]=v*0.9;o[p+3]=255}
+  bctx.putImageData(im,0,0)}
+function setFromBall(e){const r=ball.getBoundingClientRect();let x=((e.clientX-r.left)/r.width)*2-1,y=-(((e.clientY-r.top)/r.height)*2-1);const m=Math.hypot(x,y);if(m>1){x/=m;y/=m}
+  S.lx=x*1.6;S.ly=y*1.6;stopOrbit();updLight()}
+ball.addEventListener('pointerdown',e=>{ball.setPointerCapture(e.pointerId);setFromBall(e)});
+ball.addEventListener('pointermove',e=>{if(e.buttons)setFromBall(e)});
+function setFromStage(e){const r=stage.getBoundingClientRect();const s=Math.min(r.width,r.height)/2;S.lx=(e.clientX-r.left-r.width/2)/s*1.4;S.ly=-(e.clientY-r.top-r.height/2)/s*1.4;stopOrbit();updLight()}
+stage.addEventListener('pointerdown',e=>{stage.setPointerCapture(e.pointerId);setFromStage(e)});
+stage.addEventListener('pointermove',e=>{if(e.buttons)setFromStage(e)});
+
+// ---- controls
+const sl=(id,key,k)=>{$(id).oninput=e=>{S[key]=e.target.value/k;$(id+'v').textContent=S[key].toFixed(2);if(key==='height')updLight();else{drawBall();req()}}};
+sl('height','height',100);sl('inten','inten',100);sl('amb','amb',100);sl('spec','spec',100);
+function stopOrbit(){if(S.orbit){S.orbit=false;$('orbit').setAttribute('aria-pressed','false')}}
+$('orbit').onclick=()=>{S.orbit=!S.orbit;$('orbit').setAttribute('aria-pressed',S.orbit);req()};
+const modes=[['mLit',0],['mNorm',1],['mFlat',2]];
+modes.forEach(([id,m])=>$(id).onclick=()=>{S.mode=m;modes.forEach(([j,n])=>$(j).setAttribute('aria-pressed',n===m));req()});
+$('bg').onclick=()=>{S.dark=!S.dark;$('bg').setAttribute('aria-pressed',S.dark);req()};
+document.addEventListener('keydown',e=>{if(e.key===' '&&e.target===document.body){e.preventDefault();$('orbit').click()}});
+
+// ---- start
+let why='';
+try{renderer=await initWebGPU()}catch(err){renderer=null;why=String(err&&err.message||err)}
+if(!renderer){try{renderer=initWebGL2()}catch(err){renderer=null;why+=' '+String(err&&err.message||err)}}
+if(why)console.warn('renderer:',why);
+if(!renderer){$('err').hidden=false;$('err').textContent='This browser can’t run WebGPU or WebGL2, so the painting can’t be drawn here.';return}
+$('api').textContent=renderer.name;
+window.addEventListener('resize',resize);resize();updLight();
+})();
+</script>

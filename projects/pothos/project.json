@@ -1,0 +1,279 @@
+{
+ "name": "Pothos",
+ "width": 2000,
+ "height": 1801,
+ "layers": [
+  {
+   "name": "Untraced",
+   "leaf": null,
+   "z": 0,
+   "x": 719.95,
+   "y": 918.25,
+   "w": 616,
+   "h": 587,
+   "pivot": [
+    0,
+    0
+   ],
+   "reach": 1,
+   "color": "layers/z00_untraced_color.webp",
+   "normal": "layers/z00_untraced_normal.png"
+  },
+  {
+   "name": "Leaf 1",
+   "leaf": 1,
+   "z": 1,
+   "x": 119.38,
+   "y": 483.12,
+   "w": 626,
+   "h": 501,
+   "pivot": [
+    724.6,
+    959.8
+   ],
+   "reach": 679.1,
+   "color": "layers/z01_leaf01_color.webp",
+   "normal": "layers/z01_leaf01_normal.png"
+  },
+  {
+   "name": "Leaf 2",
+   "leaf": 2,
+   "z": 2,
+   "x": 635.53,
+   "y": 119.38,
+   "w": 319,
+   "h": 798,
+   "pivot": [
+    870.8,
+    896.3
+   ],
+   "reach": 759.0,
+   "color": "layers/z02_leaf02_color.webp",
+   "normal": "layers/z02_leaf02_normal.png"
+  },
+  {
+   "name": "Leaf 10",
+   "leaf": 10,
+   "z": 3,
+   "x": 1313.71,
+   "y": 259.32,
+   "w": 398,
+   "h": 1140,
+   "pivot": [
+    1484.4,
+    1371.7
+   ],
+   "reach": 1098.0,
+   "color": "layers/z03_leaf10_color.webp",
+   "normal": "layers/z03_leaf10_normal.png"
+  },
+  {
+   "name": "Leaf 9",
+   "leaf": 9,
+   "z": 4,
+   "x": 1255.36,
+   "y": 612.86,
+   "w": 404,
+   "h": 590,
+   "pivot": [
+    1275.4,
+    1179.0
+   ],
+   "reach": 647.2,
+   "color": "layers/z04_leaf09_color.webp",
+   "normal": "layers/z04_leaf09_normal.png"
+  },
+  {
+   "name": "Leaf 8",
+   "leaf": 8,
+   "z": 5,
+   "x": 992.47,
+   "y": 715.41,
+   "w": 393,
+   "h": 531,
+   "pivot": [
+    1304.8,
+    1224.4
+   ],
+   "reach": 518.8,
+   "color": "layers/z05_leaf08_color.webp",
+   "normal": "layers/z05_leaf08_normal.png"
+  },
+  {
+   "name": "Leaf 14",
+   "leaf": 14,
+   "z": 6,
+   "x": 1210.03,
+   "y": 1242.89,
+   "w": 432,
+   "h": 369,
+   "pivot": [
+    1238.5,
+    1396.6
+   ],
+   "reach": 385.4,
+   "color": "layers/z06_leaf14_color.webp",
+   "normal": "layers/z06_leaf14_normal.png"
+  },
+  {
+   "name": "Leaf 15",
+   "leaf": 15,
+   "z": 7,
+   "x": 906.92,
+   "y": 1047.99,
+   "w": 367,
+   "h": 469,
+   "pivot": [
+    1036.8,
+    1394.9
+   ],
+   "reach": 339.4,
+   "color": "layers/z07_leaf15_color.webp",
+   "normal": "layers/z07_leaf15_normal.png"
+  },
+  {
+   "name": "Leaf 11",
+   "leaf": 11,
+   "z": 8,
+   "x": 1169.8,
+   "y": 1108.61,
+   "w": 394,
+   "h": 224,
+   "pivot": [
+    1189.8,
+    1297.5
+   ],
+   "reach": 346.2,
+   "color": "layers/z08_leaf11_color.webp",
+   "normal": "layers/z08_leaf11_normal.png"
+  },
+  {
+   "name": "Leaf 12",
+   "leaf": 12,
+   "z": 9,
+   "x": 1034.39,
+   "y": 974.34,
+   "w": 162,
+   "h": 414,
+   "pivot": [
+    1120.1,
+    1367.7
+   ],
+   "reach": 373.5,
+   "color": "layers/z09_leaf12_color.webp",
+   "normal": "layers/z09_leaf12_normal.png"
+  },
+  {
+   "name": "Leaf 13",
+   "leaf": 13,
+   "z": 10,
+   "x": 602.1,
+   "y": 1070.65,
+   "w": 359,
+   "h": 226,
+   "pivot": [
+    926.9,
+    1275.4
+   ],
+   "reach": 314.5,
+   "color": "layers/z10_leaf13_color.webp",
+   "normal": "layers/z10_leaf13_normal.png"
+  },
+  {
+   "name": "Leaf 5",
+   "leaf": 5,
+   "z": 11,
+   "x": 397.57,
+   "y": 807.76,
+   "w": 535,
+   "h": 496,
+   "pivot": [
+    826.6,
+    1085.6
+   ],
+   "reach": 454.3,
+   "color": "layers/z11_leaf05_color.webp",
+   "normal": "layers/z11_leaf05_normal.png"
+  },
+  {
+   "name": "Leaf 16",
+   "leaf": 16,
+   "z": 12,
+   "x": 928.44,
+   "y": 501.25,
+   "w": 294,
+   "h": 331,
+   "pivot": [
+    1032.9,
+    811.9
+   ],
+   "reach": 323.2,
+   "color": "layers/z12_leaf16_color.webp",
+   "normal": "layers/z12_leaf16_normal.png"
+  },
+  {
+   "name": "Leaf 3",
+   "leaf": 3,
+   "z": 13,
+   "x": 667.25,
+   "y": 408.33,
+   "w": 389,
+   "h": 542,
+   "pivot": [
+    919.5,
+    910.5
+   ],
+   "reach": 492.6,
+   "color": "layers/z13_leaf03_color.webp",
+   "normal": "layers/z13_leaf03_normal.png"
+  },
+  {
+   "name": "Leaf 4",
+   "leaf": 4,
+   "z": 14,
+   "x": 746.58,
+   "y": 668.95,
+   "w": 289,
+   "h": 355,
+   "pivot": [
+    985.3,
+    1000.6
+   ],
+   "reach": 312.2,
+   "color": "layers/z14_leaf04_color.webp",
+   "normal": "layers/z14_leaf04_normal.png"
+  },
+  {
+   "name": "Leaf 7",
+   "leaf": 7,
+   "z": 15,
+   "x": 978.87,
+   "y": 531.28,
+   "w": 383,
+   "h": 387,
+   "pivot": [
+    1027.2,
+    897.5
+   ],
+   "reach": 459.9,
+   "color": "layers/z15_leaf07_color.webp",
+   "normal": "layers/z15_leaf07_normal.png"
+  },
+  {
+   "name": "Leaf 6",
+   "leaf": 6,
+   "z": 16,
+   "x": 807.2,
+   "y": 739.78,
+   "w": 379,
+   "h": 594,
+   "pivot": [
+    989.8,
+    1298.6
+   ],
+   "reach": 560.6,
+   "color": "layers/z16_leaf06_color.webp",
+   "normal": "layers/z16_leaf06_normal.png"
+  }
+ ]
+}

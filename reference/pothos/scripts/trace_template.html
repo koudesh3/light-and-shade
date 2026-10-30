@@ -1,0 +1,165 @@
+<title>Pothos Painting Outline</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one-screen tool — slim toolbar on top, the photo canvas fills the rest */
+:root{
+  --bg:#eef0ec; --panel:#ffffff; --fg:#1f2620; --muted:#5d6a5f; --line:#d3d9d2;
+  --accent:#d6246e; --accent-fg:#ffffff; --ok:#2f7d4a;
+  --stage:#c9cec7;
+  --f-ui:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#151a16; --panel:#1d241f; --fg:#e7ece6; --muted:#9aa89d; --line:#2f3a32;
+  --accent:#ff5a9a; --accent-fg:#1a0d13; --ok:#6fcf8f; --stage:#0f1310; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#151a16; --panel:#1d241f; --fg:#e7ece6; --muted:#9aa89d; --line:#2f3a32;
+  --accent:#ff5a9a; --accent-fg:#1a0d13; --ok:#6fcf8f; --stage:#0f1310; color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-ui);display:flex;flex-direction:column;overflow:hidden}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding-block:10px;padding-inline:16px;background:var(--panel);border-bottom:1px solid var(--line)}
+h1{font-size:15px;font-weight:600;margin:0;letter-spacing:.01em}
+.hint{color:var(--muted);font-size:13px;flex:1 1 260px;min-width:0}
+.tools{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;border-radius:0}
+.seg button+button{border-left:1px solid var(--line)}
+button{font:500 13px var(--f-ui);color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer}
+button:hover{background:color-mix(in srgb,var(--fg) 6%,var(--panel))}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--fg);color:var(--panel)}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+button:disabled{opacity:.45;cursor:default}
+.stat{font:400 12px var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.stat.ok{color:var(--ok)}
+#stage{flex:1;position:relative;background:var(--stage);touch-action:none;min-height:0}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#stage.draw{cursor:crosshair} #stage.pan{cursor:grab}
+</style>
+
+<header>
+  <h1>Trace the painting</h1>
+  <div class="hint" id="hint">Drag around the painting to draw the outline. Tap to add single points. Scroll or pinch to zoom.</div>
+  <div class="tools">
+    <div class="seg" role="group" aria-label="Mode">
+      <button id="mDraw" aria-pressed="true">Draw</button>
+      <button id="mPan" aria-pressed="false">Move / edit</button>
+    </div>
+    <button id="undo">Undo</button>
+    <button id="clear">Clear</button>
+    <button id="fit">Fit</button>
+    <button id="copy">Copy points</button>
+    <span class="stat" id="count">0 points</span>
+    <span class="stat" id="save">Not saved</span>
+  </div>
+</header>
+<div id="stage" class="draw"><canvas id="cv"></canvas></div>
+
+<script>
+(()=>{
+const FULL_W=3024, FULL_H=4032;
+const img=new Image(); img.src="data:image/jpeg;base64,__IMG__";
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d'), stage=document.getElementById('stage');
+let pts=[];            // full-res pixel coords [[x,y],...]
+let history=[];        // snapshots for undo
+let mode='draw';
+let view={s:1,x:0,y:0}; // screen = img*s + offset  (img in full-res px)
+let dpr=1, confirmClear=false;
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+function resize(){dpr=window.devicePixelRatio||1;const r=stage.getBoundingClientRect();cv.width=r.width*dpr;cv.height=r.height*dpr;draw()}
+function fit(){const r=stage.getBoundingClientRect();const s=Math.min(r.width/FULL_W,r.height/FULL_H)*0.96;view={s,x:(r.width-FULL_W*s)/2,y:(r.height-FULL_H*s)/2};draw()}
+const toImg=(sx,sy)=>[(sx-view.x)/view.s,(sy-view.y)/view.s];
+const toScr=(p)=>[p[0]*view.s+view.x,p[1]*view.s+view.y];
+
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,cv.width,cv.height);
+  if(img.complete&&img.naturalWidth){ctx.imageSmoothingQuality='high';ctx.drawImage(img,view.x,view.y,FULL_W*view.s,FULL_H*view.s)}
+  if(!pts.length)return;
+  const acc=css('--accent');
+  ctx.beginPath();pts.forEach((p,i)=>{const [x,y]=toScr(p);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});
+  if(pts.length>2){ctx.closePath();ctx.fillStyle='rgba(214,36,110,0.10)';ctx.fill()}
+  ctx.lineWidth=4;ctx.strokeStyle='rgba(255,255,255,0.85)';ctx.lineJoin='round';ctx.stroke();
+  ctx.lineWidth=2;ctx.strokeStyle=acc;ctx.stroke();
+  if(mode==='pan'||pts.length<60){
+    pts.forEach(p=>{const [x,y]=toScr(p);ctx.beginPath();ctx.arc(x,y,mode==='pan'?4.5:2.5,0,7);ctx.fillStyle='#fff';ctx.fill();ctx.lineWidth=1.5;ctx.strokeStyle=acc;ctx.stroke()});
+  }
+}
+img.onload=()=>{fit()};
+
+function snapshot(){history.push(JSON.stringify(pts));if(history.length>200)history.shift()}
+function changed(){document.getElementById('count').textContent=pts.length+(pts.length===1?' point':' points');draw();scheduleSave()}
+
+// ---- pointer handling
+const active=new Map(); let gesture=null;
+stage.addEventListener('pointerdown',e=>{
+  stage.setPointerCapture(e.pointerId);active.set(e.pointerId,[e.offsetX,e.offsetY]);
+  if(active.size===2){ // pinch
+    const [a,b]=[...active.values()];
+    if(gesture&&gesture.type==='stroke'&&gesture.added){pts.splice(pts.length-gesture.added);history.pop()}
+    gesture={type:'pinch',d:Math.hypot(a[0]-b[0],a[1]-b[1]),m:[(a[0]+b[0])/2,(a[1]+b[1])/2],v:{...view}};return}
+  const sx=e.offsetX, sy=e.offsetY;
+  if(mode==='pan'){
+    let hit=-1,best=12;pts.forEach((p,i)=>{const [x,y]=toScr(p);const d=Math.hypot(x-sx,y-sy);if(d<best){best=d;hit=i}});
+    if(hit>=0){snapshot();gesture={type:'vertex',i:hit}}
+    else{gesture={type:'pan',sx,sy,v:{...view}};stage.style.cursor='grabbing'}
+  }else{
+    snapshot();pts.push(toImg(sx,sy));gesture={type:'stroke',last:[sx,sy],added:1};changed();
+  }
+});
+stage.addEventListener('pointermove',e=>{
+  if(!active.has(e.pointerId))return;active.set(e.pointerId,[e.offsetX,e.offsetY]);
+  if(!gesture)return;const sx=e.offsetX, sy=e.offsetY;
+  if(gesture.type==='pinch'&&active.size===2){
+    const [a,b]=[...active.values()];const d=Math.hypot(a[0]-b[0],a[1]-b[1]);const m=[(a[0]+b[0])/2,(a[1]+b[1])/2];
+    const k=d/gesture.d, v=gesture.v;const s=Math.max(0.05,Math.min(8,v.s*k));const kk=s/v.s;
+    view={s,x:m[0]-(gesture.m[0]-v.x)*kk,y:m[1]-(gesture.m[1]-v.y)*kk};draw();
+  }else if(gesture.type==='pan'){
+    view={...gesture.v,x:gesture.v.x+sx-gesture.sx,y:gesture.v.y+sy-gesture.sy};draw();
+  }else if(gesture.type==='vertex'){
+    pts[gesture.i]=toImg(sx,sy);draw();
+  }else if(gesture.type==='stroke'){
+    if(Math.hypot(sx-gesture.last[0],sy-gesture.last[1])>=4){pts.push(toImg(sx,sy));gesture.last=[sx,sy];gesture.added++;document.getElementById('count').textContent=pts.length+' points';draw()}
+  }
+});
+function end(e){
+  active.delete(e.pointerId);
+  if(gesture&&(gesture.type==='vertex'||gesture.type==='stroke'))changed();
+  if(active.size===0){gesture=null;stage.style.cursor=''}
+}
+stage.addEventListener('pointerup',end);stage.addEventListener('pointercancel',end);
+stage.addEventListener('wheel',e=>{e.preventDefault();const k=Math.exp(-e.deltaY*0.0015);const s=Math.max(0.05,Math.min(8,view.s*k));const kk=s/view.s;
+  view={s,x:e.offsetX-(e.offsetX-view.x)*kk,y:e.offsetY-(e.offsetY-view.y)*kk};draw()},{passive:false});
+
+// ---- controls
+function setMode(m){mode=m;document.getElementById('mDraw').setAttribute('aria-pressed',m==='draw');document.getElementById('mPan').setAttribute('aria-pressed',m==='pan');
+  stage.className=m;document.getElementById('hint').textContent=m==='draw'?'Drag around the painting to draw the outline. Tap to add single points. Scroll or pinch to zoom.':'Drag a point to adjust it. Drag the photo to pan. Scroll or pinch to zoom.';draw()}
+document.getElementById('mDraw').onclick=()=>setMode('draw');
+document.getElementById('mPan').onclick=()=>setMode('pan');
+document.getElementById('undo').onclick=()=>{if(!history.length)return;pts=JSON.parse(history.pop());changed()};
+const clearBtn=document.getElementById('clear');
+clearBtn.onclick=()=>{if(!pts.length)return;if(!confirmClear){confirmClear=true;clearBtn.textContent='Tap again to clear';setTimeout(()=>{confirmClear=false;clearBtn.textContent='Clear'},2500);return}
+  confirmClear=false;clearBtn.textContent='Clear';snapshot();pts=[];changed()};
+document.getElementById('fit').onclick=fit;
+document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='z'){e.preventDefault();document.getElementById('undo').click()}});
+const ptsText=()=>JSON.stringify({w:FULL_W,h:FULL_H,points:pts.map(p=>[Math.round(p[0]),Math.round(p[1])])});
+document.getElementById('copy').onclick=async(e)=>{const b=e.currentTarget;try{await navigator.clipboard.writeText(ptsText());b.textContent='Copied'}catch(_){b.textContent='Copy failed'}setTimeout(()=>b.textContent='Copy points',1500)};
+
+// ---- persistence (shared store Claude reads)
+let db=null, saveTimer=null;
+const saveEl=document.getElementById('save');
+function scheduleSave(){if(!db){saveEl.textContent='Not saved — use Copy points';return}
+  saveEl.textContent='Saving…';saveEl.className='stat';clearTimeout(saveTimer);saveTimer=setTimeout(save,700)}
+async function save(){try{await db.doc('outline/main').set({w:FULL_W,h:FULL_H,points:pts.map(p=>[Math.round(p[0]),Math.round(p[1])]),updated:Date.now()});
+  saveEl.textContent='Saved';saveEl.className='stat ok'}catch(err){saveEl.textContent='Save failed — use Copy points';saveEl.className='stat'}}
+(async()=>{try{db=await window.claude?.use?.('db')}catch(_){db=null}
+  if(!db){saveEl.textContent='Not saved — use Copy points';return}
+  try{const snap=await db.doc('outline/main').get();const d=snap&&(snap.data?snap.data():snap);
+    if(d&&Array.isArray(d.points)&&d.points.length&&!pts.length){pts=d.points;document.getElementById('count').textContent=pts.length+' points';draw();saveEl.textContent='Saved';saveEl.className='stat ok'}
+    else saveEl.textContent='Ready';
+  }catch(_){saveEl.textContent='Ready'}})();
+
+window.addEventListener('resize',()=>{resize()});
+resize();fit();
+})();
+</script>

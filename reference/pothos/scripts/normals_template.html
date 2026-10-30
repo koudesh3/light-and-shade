@@ -1,0 +1,282 @@
+<title>Pothos Leaf Normals</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: leaf canvas fills the left; right rail holds the normal sphere, tools and leaf picker (stacks below on phones) */
+:root{
+  --bg:#eef0ec; --panel:#ffffff; --fg:#1f2620; --muted:#5d6a5f; --line:#d3d9d2;
+  --accent:#1f2620; --ok:#2f7d4a; --stage:#c9cec7; --chip:#f3f5f2;
+  --f-ui:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#151a16; --panel:#1d241f; --fg:#e7ece6; --muted:#9aa89d; --line:#2f3a32;
+  --accent:#e7ece6; --ok:#6fcf8f; --stage:#0f1310; --chip:#252e28; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#151a16; --panel:#1d241f; --fg:#e7ece6; --muted:#9aa89d; --line:#2f3a32;
+  --accent:#e7ece6; --ok:#6fcf8f; --stage:#0f1310; --chip:#252e28; color-scheme:dark}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-ui);display:flex;overflow:hidden}
+#stage{flex:1;position:relative;background:var(--stage);min-width:0;touch-action:none}
+#stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+aside{width:300px;max-width:100%;background:var(--panel);border-left:1px solid var(--line);overflow:auto;display:flex;flex-direction:column}
+.sec{padding-block:12px;padding-inline:16px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+h1{font-size:15px;font-weight:600;margin:0}
+.lbl{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.muted{color:var(--muted);font-size:12.5px;line-height:1.45}
+.sphere-wrap{display:flex;gap:12px;align-items:flex-start}
+#sphere{width:168px;height:168px;cursor:crosshair;touch-action:none;border-radius:50%;flex:none}
+.readout{display:flex;flex-direction:column;gap:6px;min-width:0}
+#swatch{width:44px;height:44px;border-radius:8px;border:1px solid var(--line)}
+.mono{font:400 12px var(--f-mono);font-variant-numeric:tabular-nums;color:var(--muted);line-height:1.6}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+button{font:500 13px var(--f-ui);color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:pointer}
+button:hover{background:color-mix(in srgb,var(--fg) 6%,var(--panel))}
+button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--fg);color:var(--panel);border-color:var(--fg)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;border-radius:0}.seg button+button{border-left:1px solid var(--line)}
+input[type=range]{width:100%;accent-color:var(--fg)}
+.leaves{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.leaves button{font:500 12px var(--f-mono);padding:6px 2px;background:var(--chip);border-color:transparent;display:flex;flex-direction:column;align-items:center;gap:1px}
+.leaves button small{font-size:10px;color:var(--muted)}
+.leaves button.done{background:color-mix(in srgb,var(--ok) 18%,var(--panel))}
+.leaves button[aria-pressed="true"]{background:var(--fg);color:var(--panel)}
+.leaves button[aria-pressed="true"] small{color:var(--panel)}
+.stat{font:400 12px var(--f-mono);color:var(--muted)}.stat.ok{color:var(--ok)}
+#light{width:84px;height:84px;border-radius:50%;cursor:crosshair;touch-action:none}
+@media (max-width:760px){body{flex-direction:column}#stage{flex:0 0 50vh}aside{width:auto;border-left:0;border-top:1px solid var(--line);flex:1}}
+</style>
+
+<div id="stage"><canvas id="cv"></canvas></div>
+<aside>
+  <div class="sec">
+    <h1 id="title">Leaf 6</h1>
+    <div class="muted">Pick a direction on the sphere, then paint it where the leaf faces that way. Hatched area is hidden behind leaves in front.</div>
+  </div>
+  <div class="sec">
+    <div class="lbl">Facing direction</div>
+    <div class="sphere-wrap">
+      <canvas id="sphere" width="168" height="168" aria-label="Normal sphere: click to pick a facing direction"></canvas>
+      <div class="readout">
+        <div id="swatch"></div>
+        <div class="mono" id="nread">x 0.00<br>y 0.00<br>z 1.00</div>
+        <button id="flat" title="Facing straight at the viewer">Facing you</button>
+      </div>
+    </div>
+  </div>
+  <div class="sec">
+    <div class="lbl">Tool</div>
+    <div class="seg" role="group" aria-label="Tool">
+      <button id="tBrush" aria-pressed="true" title="B">Brush</button>
+      <button id="tLasso" aria-pressed="false" title="L">Shape</button>
+      <button id="tErase" aria-pressed="false" title="E">Erase</button>
+      <button id="tPan" aria-pressed="false" title="Hold space">Move</button>
+    </div>
+    <div class="muted" id="toolhint">Drag to paint. Shape: drag around an area and release to fill it.</div>
+    <label class="row" for="size"><span class="stat" style="width:70px">Brush <span id="sizev">60</span></span><input id="size" type="range" min="6" max="300" value="60" style="flex:1"></label>
+    <div class="row"><button id="fillAll">Fill whole leaf</button><button id="undo">Undo</button><button id="clear">Clear leaf</button></div>
+  </div>
+  <div class="sec">
+    <div class="lbl">View</div>
+    <div class="seg" role="group" aria-label="View">
+      <button id="vPhoto" aria-pressed="false">Photo</button>
+      <button id="vNorm" aria-pressed="true">Normals</button>
+      <button id="vLit" aria-pressed="false">Lit</button>
+    </div>
+    <label class="row" for="op" id="oprow"><span class="stat" style="width:70px">Opacity</span><input id="op" type="range" min="10" max="100" value="70" style="flex:1"></label>
+    <div class="row" id="lightrow" hidden><canvas id="light" width="84" height="84" aria-label="Drag to move the light"></canvas><span class="muted" style="flex:1;min-width:0">Drag on the ball to move the light and check the shading reads right.</span></div>
+  </div>
+  <div class="sec">
+    <div class="lbl">Leaves</div>
+    <div class="leaves" id="leaves"></div>
+    <div class="row"><span class="stat" id="save">Not saved</span><button id="copy">Copy all</button></div>
+  </div>
+</aside>
+
+<script>
+(()=>{
+const FULL_W=3024, FULL_H=4032, SC=0.5;
+const LEAVES=__LEAVES__;               // full-res polygons, index = leaf-1
+const ORDER=__ORDER__;                 // back -> front, 1-based leaf numbers
+const zOf={};ORDER.forEach((l,z)=>zOf[l]=z+1);
+const img=new Image();img.src="data:image/jpeg;base64,__IMG__";
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d'),stage=document.getElementById('stage');
+const $=id=>document.getElementById(id);
+
+let leaf=ORDER[ORDER.length-1];        // start with the front leaf
+let ops={};                            // leaf -> [{t:'brush'|'erase'|'poly'|'all', n:[x,y,z], r, pts}]
+let tool='brush', prevTool='brush', normal=[0,0,1], brushR=60, viewMode='normals', opacity=0.7, light=normalize([-0.45,0.55,0.7]);
+let view={s:1,x:0,y:0}, dpr=1;
+let paint=document.createElement('canvas'), pctx=paint.getContext('2d');
+let lit=document.createElement('canvas'), lctx=lit.getContext('2d');
+let photoData=null, bb=null, litDirty=true;
+
+function normalize(v){const l=Math.hypot(...v)||1;return v.map(c=>c/l)}
+const n2rgb=n=>n.map(c=>Math.round((c*0.5+0.5)*255));
+const rgbStr=n=>{const [r,g,b]=n2rgb(n);return `rgb(${r},${g},${b})`};
+
+// ---------- leaf geometry
+function bboxOf(i){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;LEAVES[i].forEach(([x,y])=>{x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y)});const p=40;return [Math.max(0,x0-p),Math.max(0,y0-p),Math.min(FULL_W,x1+p),Math.min(FULL_H,y1+p)]}
+function polyPath(c,i,tx){c.beginPath();LEAVES[i].forEach(([x,y],k)=>{const [a,b]=tx(x,y);k?c.lineTo(a,b):c.moveTo(a,b)});c.closePath()}
+const toPaint=(x,y)=>[(x-bb[0])*SC,(y-bb[1])*SC];
+const toScr=(x,y)=>[x*view.s+view.x,y*view.s+view.y];
+const toFull=(sx,sy)=>[(sx-view.x)/view.s,(sy-view.y)/view.s];
+
+function selectLeaf(l){
+  leaf=l;const i=l-1;bb=bboxOf(i);
+  paint.width=Math.ceil((bb[2]-bb[0])*SC);paint.height=Math.ceil((bb[3]-bb[1])*SC);
+  lit.width=paint.width;lit.height=paint.height;photoData=null;
+  $('title').textContent=`Leaf ${l}  ·  z ${zOf[l]} of ${ORDER.length}`;
+  renderOps();fit();renderLeafButtons();
+}
+function fit(){const r=stage.getBoundingClientRect();const w=bb[2]-bb[0],h=bb[3]-bb[1];const s=Math.min(r.width/w,r.height/h)*0.92;view={s,x:(r.width-w*s)/2-bb[0]*s,y:(r.height-h*s)/2-bb[1]*s};draw()}
+function resize(){dpr=window.devicePixelRatio||1;const r=stage.getBoundingClientRect();cv.width=r.width*dpr;cv.height=r.height*dpr;if(bb)fit()}
+
+// ---------- paint layer (ops rendered at SC, clipped to the leaf)
+function applyOp(op,c){
+  c.save();polyPath(c,leaf-1,toPaint);c.clip();
+  if(op.t==='erase')c.globalCompositeOperation='destination-out';
+  c.fillStyle=c.strokeStyle=op.t==='erase'?'#000':rgbStr(op.n);
+  if(op.t==='all'){c.fillRect(0,0,paint.width,paint.height)}
+  else if(op.t==='poly'){c.beginPath();op.pts.forEach(([x,y],k)=>{const [a,b]=toPaint(x,y);k?c.lineTo(a,b):c.moveTo(a,b)});c.closePath();c.fill()}
+  else{c.lineCap='round';c.lineJoin='round';c.lineWidth=op.r*2*SC;c.beginPath();op.pts.forEach(([x,y],k)=>{const [a,b]=toPaint(x,y);k?c.lineTo(a,b):c.moveTo(a,b)});if(op.pts.length===1){const [a,b]=toPaint(...op.pts[0]);c.lineTo(a+0.01,b)}c.stroke()}
+  c.restore();
+}
+function renderOps(){pctx.clearRect(0,0,paint.width,paint.height);(ops[leaf]||[]).forEach(o=>applyOp(o,pctx));litDirty=true;draw()}
+
+// ---------- lit preview
+function ensurePhoto(){if(photoData||!img.naturalWidth)return;const t=document.createElement('canvas');t.width=paint.width;t.height=paint.height;const k=img.naturalWidth/FULL_W;
+  t.getContext('2d').drawImage(img,bb[0]*k,bb[1]*k,(bb[2]-bb[0])*k,(bb[3]-bb[1])*k,0,0,t.width,t.height);photoData=t.getContext('2d').getImageData(0,0,t.width,t.height).data}
+function renderLit(){
+  ensurePhoto();if(!photoData)return;const w=paint.width,h=paint.height;
+  const pd=pctx.getImageData(0,0,w,h).data;const out=lctx.createImageData(w,h);const o=out.data;
+  const mask=document.createElement('canvas');mask.width=w;mask.height=h;const mc=mask.getContext('2d');polyPath(mc,leaf-1,toPaint);mc.fill();const md=mc.getImageData(0,0,w,h).data;
+  const [lx,ly,lz]=light;
+  for(let p=0;p<pd.length;p+=4){
+    if(!md[p+3]){o[p+3]=0;continue}
+    let shade;
+    if(pd[p+3]>10){let nx=pd[p]/127.5-1,ny=pd[p+1]/127.5-1,nz=pd[p+2]/127.5-1;const l=Math.hypot(nx,ny,nz)||1;shade=Math.max(0,(nx*lx+ny*ly+nz*lz)/l)}
+    else shade=0.5;
+    const k=0.18+0.95*shade, unp=pd[p+3]>10?1:0.55;
+    o[p]=Math.min(255,photoData[p]*k)*unp+(1-unp)*120;o[p+1]=Math.min(255,photoData[p+1]*k)*unp+(1-unp)*60;o[p+2]=Math.min(255,photoData[p+2]*k)*unp+(1-unp)*140;o[p+3]=255;
+  }
+  lctx.putImageData(out,0,0);litDirty=false;
+}
+
+// ---------- main draw
+let hatchPat=null;
+function hatch(){if(hatchPat)return hatchPat;const c=document.createElement('canvas');c.width=c.height=10;const g=c.getContext('2d');g.strokeStyle='rgba(255,255,255,0.8)';g.lineWidth=2;g.beginPath();g.moveTo(0,10);g.lineTo(10,0);g.moveTo(-5,5);g.lineTo(5,-5);g.moveTo(5,15);g.lineTo(15,5);g.stroke();hatchPat=ctx.createPattern(c,'repeat');return hatchPat}
+let lassoPts=null, cursor=null;
+function draw(){
+  if(!bb)return;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,cv.width,cv.height);
+  if(img.naturalWidth)ctx.drawImage(img,view.x,view.y,FULL_W*view.s,FULL_H*view.s);
+  const i=leaf-1;
+  // dim outside this leaf
+  ctx.save();ctx.beginPath();ctx.rect(0,0,cv.width,cv.height);LEAVES[i].forEach(([x,y],k)=>{const [a,b]=toScr(x,y);k?ctx.lineTo(a,b):ctx.moveTo(a,b)});ctx.closePath();ctx.fillStyle='rgba(18,24,20,0.6)';ctx.fill('evenodd');ctx.restore();
+  const dx=bb[0]*view.s+view.x, dy=bb[1]*view.s+view.y, dw=(bb[2]-bb[0])*view.s, dh=(bb[3]-bb[1])*view.s;
+  if(viewMode==='normals'){ctx.globalAlpha=opacity;ctx.drawImage(paint,dx,dy,dw,dh);ctx.globalAlpha=1}
+  if(viewMode==='lit'){if(litDirty)renderLit();ctx.drawImage(lit,dx,dy,dw,dh)}
+  // hidden part: inside this leaf and inside any leaf in front
+  const front=ORDER.slice(zOf[leaf]);
+  if(front.length){ctx.save();polyPath(ctx,i,toScr);ctx.clip();ctx.beginPath();front.forEach(l=>{LEAVES[l-1].forEach(([x,y],k)=>{const [a,b]=toScr(x,y);k?ctx.lineTo(a,b):ctx.moveTo(a,b)});ctx.closePath()});ctx.fillStyle=hatch();ctx.fill('nonzero');ctx.restore()}
+  polyPath(ctx,i,toScr);ctx.lineWidth=2;ctx.strokeStyle='rgba(255,255,255,0.9)';ctx.stroke();
+  if(lassoPts&&lassoPts.length>1){ctx.beginPath();lassoPts.forEach(([x,y],k)=>{const [a,b]=toScr(x,y);k?ctx.lineTo(a,b):ctx.moveTo(a,b)});ctx.closePath();ctx.fillStyle=tool==='erase'?'rgba(0,0,0,0.25)':rgbStr(normal);ctx.globalAlpha=0.5;ctx.fill();ctx.globalAlpha=1;ctx.lineWidth=1.5;ctx.strokeStyle='#fff';ctx.stroke()}
+  if(cursor&&(tool==='brush'||tool==='erase')){ctx.beginPath();ctx.arc(cursor[0],cursor[1],brushR*view.s,0,7);ctx.lineWidth=1.5;ctx.strokeStyle='#fff';ctx.stroke();ctx.lineWidth=1;ctx.strokeStyle='rgba(0,0,0,0.6)';ctx.stroke()}
+}
+img.onload=()=>{photoData=null;litDirty=true;draw()};
+
+// ---------- normal sphere
+const sph=$('sphere'),sctx=sph.getContext('2d');
+function renderSphere(){
+  const d=window.devicePixelRatio||1,S=Math.round(168*d);sph.width=sph.height=S;
+  const im=sctx.createImageData(S,S),o=im.data,R=S/2;
+  for(let y=0;y<S;y++)for(let x=0;x<S;x++){const nx=(x+0.5-R)/R,ny=-(y+0.5-R)/R,r2=nx*nx+ny*ny,p=(y*S+x)*4;
+    if(r2>1){o[p+3]=0;continue}const nz=Math.sqrt(1-r2);o[p]=(nx*0.5+0.5)*255;o[p+1]=(ny*0.5+0.5)*255;o[p+2]=(nz*0.5+0.5)*255;o[p+3]=255}
+  sctx.putImageData(im,0,0);
+  const mx=R+normal[0]*R, my=R-normal[1]*R;sctx.beginPath();sctx.arc(mx,my,6*d,0,7);sctx.lineWidth=2.5*d;sctx.strokeStyle='#fff';sctx.stroke();sctx.lineWidth=1*d;sctx.strokeStyle='#000';sctx.stroke();
+}
+function setNormal(n){normal=normalize(n);const [r,g,b]=n2rgb(normal);$('swatch').style.background=`rgb(${r},${g},${b})`;
+  $('nread').innerHTML=`x ${normal[0].toFixed(2)}<br>y ${normal[1].toFixed(2)}<br>z ${normal[2].toFixed(2)}<br>rgb ${r} ${g} ${b}`;renderSphere()}
+function pickSphere(e,el,cb){const r=el.getBoundingClientRect();let nx=((e.clientX-r.left)/r.width)*2-1,ny=-(((e.clientY-r.top)/r.height)*2-1);const r2=nx*nx+ny*ny;
+  if(r2>0.995){const k=Math.sqrt(0.995/r2);nx*=k;ny*=k}cb([nx,ny,Math.sqrt(Math.max(0,1-nx*nx-ny*ny))])}
+sph.addEventListener('pointerdown',e=>{sph.setPointerCapture(e.pointerId);pickSphere(e,sph,setNormal)});
+sph.addEventListener('pointermove',e=>{if(e.buttons)pickSphere(e,sph,setNormal)});
+$('flat').onclick=()=>setNormal([0,0,1]);
+
+// light ball
+const lb=$('light'),lbc=lb.getContext('2d');
+function renderLight(){const d=window.devicePixelRatio||1,S=Math.round(84*d);lb.width=lb.height=S;const im=lbc.createImageData(S,S),o=im.data,R=S/2;
+  for(let y=0;y<S;y++)for(let x=0;x<S;x++){const nx=(x+0.5-R)/R,ny=-(y+0.5-R)/R,r2=nx*nx+ny*ny,p=(y*S+x)*4;if(r2>1){o[p+3]=0;continue}const nz=Math.sqrt(1-r2);const s=Math.max(0,nx*light[0]+ny*light[1]+nz*light[2]);const v=30+215*s;o[p]=v;o[p+1]=v;o[p+2]=v*0.96;o[p+3]=255}
+  lbc.putImageData(im,0,0)}
+const setLight=n=>{light=normalize(n);renderLight();litDirty=true;draw()};
+lb.addEventListener('pointerdown',e=>{lb.setPointerCapture(e.pointerId);pickSphere(e,lb,setLight)});
+lb.addEventListener('pointermove',e=>{if(e.buttons)pickSphere(e,lb,setLight)});
+
+// ---------- canvas input
+const active=new Map();let g=null;
+stage.addEventListener('pointerdown',e=>{
+  stage.setPointerCapture(e.pointerId);active.set(e.pointerId,[e.offsetX,e.offsetY]);
+  if(active.size===2){if(g&&g.op){(ops[leaf]=ops[leaf]||[]).pop();renderOps()}lassoPts=null;const [a,b]=[...active.values()];g={type:'pinch',d:Math.hypot(a[0]-b[0],a[1]-b[1]),m:[(a[0]+b[0])/2,(a[1]+b[1])/2],v:{...view}};return}
+  const p=toFull(e.offsetX,e.offsetY);
+  if(tool==='pan'||e.button===1){g={type:'pan',sx:e.offsetX,sy:e.offsetY,v:{...view}};return}
+  if(tool==='lasso'){lassoPts=[p];g={type:'lasso'};draw();return}
+  const op={t:tool==='erase'?'erase':'brush',n:normal.map(c=>+c.toFixed(4)),r:brushR,pts:[p.map(Math.round)]};
+  (ops[leaf]=ops[leaf]||[]).push(op);applyOp(op,pctx);litDirty=true;g={type:'paint',op};draw();
+});
+stage.addEventListener('pointermove',e=>{
+  cursor=[e.offsetX,e.offsetY];
+  if(!active.has(e.pointerId)){draw();return}active.set(e.pointerId,[e.offsetX,e.offsetY]);
+  if(!g){draw();return}
+  if(g.type==='pinch'&&active.size===2){const [a,b]=[...active.values()];const d=Math.hypot(a[0]-b[0],a[1]-b[1]);const m=[(a[0]+b[0])/2,(a[1]+b[1])/2];const s=Math.max(0.05,Math.min(10,g.v.s*d/g.d)),k=s/g.v.s;view={s,x:m[0]-(g.m[0]-g.v.x)*k,y:m[1]-(g.m[1]-g.v.y)*k};draw();return}
+  if(g.type==='pan'){view={...g.v,x:g.v.x+e.offsetX-g.sx,y:g.v.y+e.offsetY-g.sy};draw();return}
+  const p=toFull(e.offsetX,e.offsetY).map(Math.round);
+  if(g.type==='lasso'){const l=lassoPts[lassoPts.length-1];if(Math.hypot(p[0]-l[0],p[1]-l[1])*view.s>=4)lassoPts.push(p);draw();return}
+  if(g.type==='paint'){const pts=g.op.pts,l=pts[pts.length-1];if(Math.hypot(p[0]-l[0],p[1]-l[1])*view.s<2)return;pts.push(p);
+    const seg={...g.op,pts:[l,p]};applyOp(seg,pctx);litDirty=true;draw()}
+});
+function end(e){active.delete(e.pointerId);
+  if(g&&g.type==='lasso'&&lassoPts&&lassoPts.length>2){const op={t:'poly',n:normal.map(c=>+c.toFixed(4)),pts:lassoPts.map(q=>q.map(Math.round))};if(tool==='erase')op.t='erase';(ops[leaf]=ops[leaf]||[]).push(op);renderOps();changed()}
+  else if(g&&g.type==='paint')changed();
+  if(!active.size){g=null;lassoPts=null;draw()}}
+stage.addEventListener('pointerup',end);stage.addEventListener('pointercancel',end);
+stage.addEventListener('pointerleave',()=>{cursor=null;draw()});
+stage.addEventListener('wheel',e=>{e.preventDefault();const k0=Math.exp(-e.deltaY*0.0015);const s=Math.max(0.05,Math.min(10,view.s*k0)),k=s/view.s;view={s,x:e.offsetX-(e.offsetX-view.x)*k,y:e.offsetY-(e.offsetY-view.y)*k};draw()},{passive:false});
+
+// ---------- controls
+const hints={brush:'Drag to paint the picked direction.',lasso:'Drag around an area and release to fill it with the picked direction.',erase:'Drag to erase paint.',pan:'Drag to move around. Scroll or pinch to zoom.'};
+function setTool(t){tool=t;[['tBrush','brush'],['tLasso','lasso'],['tErase','erase'],['tPan','pan']].forEach(([id,v])=>$(id).setAttribute('aria-pressed',v===t));$('toolhint').textContent=hints[t];stage.style.cursor=t==='pan'?'grab':'crosshair';draw()}
+$('tBrush').onclick=()=>setTool('brush');$('tLasso').onclick=()=>setTool('lasso');$('tErase').onclick=()=>setTool('erase');$('tPan').onclick=()=>setTool('pan');
+$('size').oninput=e=>{brushR=+e.target.value;$('sizev').textContent=brushR;draw()};
+$('fillAll').onclick=()=>{(ops[leaf]=ops[leaf]||[]).push({t:'all',n:normal.map(c=>+c.toFixed(4))});renderOps();changed()};
+$('undo').onclick=()=>{if(!(ops[leaf]||[]).length)return;ops[leaf].pop();renderOps();changed()};
+let confirmClear=false;$('clear').onclick=()=>{const b=$('clear');if(!(ops[leaf]||[]).length)return;if(!confirmClear){confirmClear=true;b.textContent='Tap again';setTimeout(()=>{confirmClear=false;b.textContent='Clear leaf'},2500);return}confirmClear=false;b.textContent='Clear leaf';ops[leaf]=[];renderOps();changed()};
+function setView(v){viewMode=v;[['vPhoto','photo'],['vNorm','normals'],['vLit','lit']].forEach(([id,m])=>$(id).setAttribute('aria-pressed',m===v));$('oprow').hidden=v!=='normals';$('lightrow').hidden=v!=='lit';if(v==='lit')renderLight();draw()}
+$('vPhoto').onclick=()=>setView('photo');$('vNorm').onclick=()=>setView('normals');$('vLit').onclick=()=>setView('lit');
+$('op').oninput=e=>{opacity=e.target.value/100;draw()};
+document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;
+  if((e.metaKey||e.ctrlKey)&&e.key==='z'){e.preventDefault();$('undo').click();return}
+  if(e.key==='b')setTool('brush');else if(e.key==='l')setTool('lasso');else if(e.key==='e')setTool('erase');
+  else if(e.key==='['){brushR=Math.max(6,brushR-10);$('size').value=brushR;$('sizev').textContent=brushR;draw()}
+  else if(e.key===']'){brushR=Math.min(300,brushR+10);$('size').value=brushR;$('sizev').textContent=brushR;draw()}
+  else if(e.code==='Space'&&tool!=='pan'){e.preventDefault();prevTool=tool;setTool('pan')}});
+document.addEventListener('keyup',e=>{if(e.code==='Space'&&tool==='pan'&&prevTool!=='pan'){setTool(prevTool);prevTool='pan'}});
+
+function renderLeafButtons(){const box=$('leaves');box.innerHTML='';
+  [...ORDER].reverse().forEach(l=>{const b=document.createElement('button');b.innerHTML=`leaf ${l}<small>z ${zOf[l]}</small>`;b.setAttribute('aria-pressed',l===leaf);if((ops[l]||[]).length)b.className='done';b.title=`Leaf ${l}, z ${zOf[l]}`;b.onclick=()=>selectLeaf(l);box.appendChild(b)})}
+
+// ---------- persistence: one document per leaf
+let db=null;const saveEl=$('save'),timers={};
+const allData=()=>({convention:'rgb = normal*0.5+0.5, x right, y up, z toward viewer',coords:'full-res 3024x4032 photo pixels',leaves:Object.fromEntries(Object.entries(ops).filter(([,v])=>v.length))});
+function changed(){renderLeafButtons();if(!db){saveEl.textContent='Not saved, use Copy all';return}
+  const l=leaf;saveEl.textContent='Saving…';saveEl.className='stat';clearTimeout(timers[l]);
+  timers[l]=setTimeout(async()=>{try{await db.doc('normals/leaf'+String(l).padStart(2,'0')).set({leaf:l,ops:ops[l]||[],updated:Date.now()});saveEl.textContent='Saved';saveEl.className='stat ok'}catch(_){saveEl.textContent='Save failed, use Copy all'}},700)}
+$('copy').onclick=async e=>{const b=e.currentTarget;try{await navigator.clipboard.writeText(JSON.stringify(allData()));b.textContent='Copied'}catch(_){b.textContent='Copy failed'}setTimeout(()=>b.textContent='Copy all',1500)};
+(async()=>{try{db=await window.claude?.use?.('db')}catch(_){db=null}
+  if(!db){saveEl.textContent='Not saved, use Copy all';return}
+  try{const q=await db.collection('normals').get();q.docs.forEach(d=>{const v=d.data();if(v&&v.leaf&&Array.isArray(v.ops))ops[v.leaf]=v.ops});saveEl.textContent=q.empty?'Ready':'Saved';saveEl.className=q.empty?'stat':'stat ok';renderOps();renderLeafButtons()}catch(_){saveEl.textContent='Ready'}})();
+
+window.addEventListener('resize',resize);
+setNormal([0,0,1]);resize();selectLeaf(leaf);setView('normals');setTool('brush');
+})();
+</script>

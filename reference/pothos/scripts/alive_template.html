@@ -1,0 +1,287 @@
+<title>Pothos in a Breeze</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: the plant floats on a full-bleed sheet of paper; a small control card sits bottom-left (full width on phones).
+   The paper stays white in both themes so the painting reads true; only the card follows the theme. */
+:root{
+  --paper:#ffffff; --panel:rgba(255,255,255,0.9); --fg:#1f2620; --muted:#5d6a5f; --line:#d9ded7;
+  --f-ui:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--panel:rgba(24,30,26,0.9);--fg:#e7ece6;--muted:#9aa89d;--line:#323d35;color-scheme:dark}}
+:root[data-theme="dark"]{--panel:rgba(24,30,26,0.9);--fg:#e7ece6;--muted:#9aa89d;--line:#323d35;color-scheme:dark}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--paper);color:var(--fg);font-family:var(--f-ui);overflow:hidden}
+#stage{position:fixed;inset:0;touch-action:none;background:var(--paper)}
+#gl{width:100%;height:100%;display:block}
+.card{position:fixed;left:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));width:268px;max-width:calc(100% - 32px);background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:0 8px 28px rgba(20,30,22,0.10)}
+.top{display:flex;gap:12px;align-items:center}
+h1{font-size:14px;font-weight:600;margin:0;letter-spacing:.01em}
+.muted{color:var(--muted);font-size:12px;line-height:1.4}
+#ball{width:64px;height:64px;border-radius:50%;flex:none;cursor:grab;touch-action:none}
+label.sl{display:grid;grid-template-columns:58px 1fr;gap:10px;align-items:center;font-size:12px;color:var(--muted)}
+input[type=range]{width:100%;accent-color:var(--fg)}
+.row{display:flex;gap:6px;flex-wrap:wrap}
+button{font:500 12px var(--f-ui);color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:7px;padding:6px 9px;cursor:pointer}
+button[aria-pressed="true"]{background:var(--fg);color:var(--paper);border-color:var(--fg)}
+:root[data-theme="dark"] button[aria-pressed="true"]{color:#141a16}
+button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+.tag{font:400 10.5px var(--f-mono);color:var(--muted)}
+#err{position:fixed;inset:0;display:grid;place-items:center;padding-inline:16px;text-align:center;font-size:14px;color:#5d6a5f}
+#min{position:absolute;top:8px;right:8px;padding:2px 8px;font-size:11px}
+.card.small > :not(.top){display:none}
+.card.small #min{position:static}
+</style>
+
+<div id="stage"><canvas id="gl"></canvas></div>
+<div id="err" hidden></div>
+<div class="card" id="card">
+  <div class="top">
+    <canvas id="ball" width="64" height="64" aria-label="Light direction: drag to move the sun"></canvas>
+    <div style="min-width:0;flex:1">
+      <h1>Pothos in a breeze</h1>
+      <div class="muted">Move through the leaves to stir them. Drag the ball to move the light.</div>
+      <div class="tag" id="api">starting…</div>
+    </div>
+  </div>
+  <label class="sl" for="breeze">Breeze<input id="breeze" type="range" min="0" max="100" value="35"></label>
+  <label class="sl" for="depth">Depth<input id="depth" type="range" min="0" max="100" value="55"></label>
+  <label class="sl" for="shadow">Shadows<input id="shadow" type="range" min="0" max="100" value="60"></label>
+  <label class="sl" for="sun">Light<input id="sun" type="range" min="0" max="200" value="100"></label>
+  <div class="row">
+    <button id="orbit" aria-pressed="true">Sun moves</button>
+    <button id="explode" aria-pressed="false">Spread layers</button>
+    <button id="calm" aria-pressed="false">Still</button>
+  </div>
+</div>
+
+<script>
+(async()=>{
+const A=__ASSETS__;
+const $=id=>document.getElementById(id);
+const cv=$('gl'),stage=$('stage');
+const NL=A.layers.length, MAXZ=NL-1;
+const S={breeze:0.35,depth:0.55,shadow:0.6,sun:1.0,orbit:true,explode:0,explodeT:0,calm:false,az:2.35,el:0.62};
+let light=[0,0,1];
+function setSun(az,el){S.az=az;S.el=el;const c=Math.cos(el);light=[Math.cos(az)*c,Math.sin(az)*c,Math.sin(el)]}
+setSun(S.az,S.el);
+
+// ---------- load images (fetch is blocked in the sandbox; use <img>)
+function loadImg(src){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('a leaf image failed to load'));im.src=src})}
+async function bmp(src){const im=await loadImg(src);try{return await createImageBitmap(im,{premultiplyAlpha:'none',colorSpaceConversion:'none'})}catch(_){return im}}
+let layers;
+try{layers=await Promise.all(A.layers.map(async L=>({...L,cimg:await bmp(L.color),nimg:await bmp(L.normal)})))}
+catch(e){$('err').hidden=false;$('err').textContent='The leaves didn’t load: '+e.message;return}
+
+// ---------- per-leaf motion state (angular spring)
+const st=layers.map((L,i)=>({th:0,om:0,ph1:Math.random()*6.28,ph2:Math.random()*6.28,fr:0.55+Math.random()*0.35,
+  cx:L.x+L.w/2,cy:L.y+L.h/2,k:L.leaf?14+Math.random()*6:0}));
+// view transform (painting px -> NDC)
+let view={s:1,ox:0,oy:0};
+function computeView(){const w=cv.width,h=cv.height,d=w/Math.max(1,stage.clientWidth);const wide=stage.clientWidth>760;
+  const left=wide?300*d:0,bottom=wide?0:Math.min(h*0.42,330*d);const aw=w-left,ah=h-bottom;const s=Math.min(aw/A.w,ah/A.h)*0.88;
+  view={s,ox:left+(aw-A.w*s)/2,oy:(ah-A.h*s)/2}}
+const xf=()=>[2*view.s/cv.width,-2*view.s/cv.height,2*view.ox/cv.width-1,1-2*view.oy/cv.height];
+const toPaint=(cx,cy)=>{const d=cv.width/Math.max(1,stage.clientWidth);return[(cx*d-view.ox)/view.s,(cy*d-view.oy)/view.s]};
+
+// ---------- pointer: position (parallax) + velocity (wind)
+let ptr={x:A.w/2,y:A.h/2,vx:0,vy:0,t:0,in:false}, tilt={x:0,y:0}, tiltT={x:0,y:0};
+function onMove(e){const [x,y]=toPaint(e.clientX,e.clientY);const now=performance.now();const dt=Math.max(8,now-ptr.t);
+  if(ptr.in){ptr.vx=ptr.vx*0.5+0.5*(x-ptr.x)/dt*16;ptr.vy=ptr.vy*0.5+0.5*(y-ptr.y)/dt*16}
+  ptr.x=x;ptr.y=y;ptr.t=now;ptr.in=true;const r=stage.getBoundingClientRect();tiltT={x:(e.clientX-r.left)/r.width*2-1,y:(e.clientY-r.top)/r.height*2-1}}
+stage.addEventListener('pointermove',onMove);
+stage.addEventListener('pointerdown',e=>{ptr.in=false;onMove(e)});
+stage.addEventListener('pointerleave',()=>{ptr.in=false;tiltT={x:0,y:0}});
+
+// ---------- simulation
+function step(dt,t){
+  const gust=S.calm?0:S.breeze*(0.6+0.4*Math.sin(t*0.23)+0.25*Math.sin(t*0.61+1.3));
+  layers.forEach((L,i)=>{const s=st[i];if(!L.leaf)return;
+    const len=Math.max(60,L.len), lever=len/400;
+    let torque=gust*(Math.sin(t*s.fr*2.1+s.ph1)+0.5*Math.sin(t*s.fr*4.7+s.ph2))*0.9/lever*0.06;
+    if(ptr.in&&!S.calm){const rx=ptr.x-L.px,ry=ptr.y-L.py;const dx=ptr.x-s.cx,dy=ptr.y-s.cy;const near=Math.exp(-(dx*dx+dy*dy)/(2*Math.pow(Math.max(L.w,L.h)*0.55,2)));
+      const cross=(rx*ptr.vy-ry*ptr.vx)/Math.max(len*len,1);torque+=cross*near*0.9}
+    s.om+=(-s.k*s.th-2.6*s.om+torque*40)*dt;s.th+=s.om*dt;s.th=Math.max(-0.32,Math.min(0.32,s.th))});
+  ptr.vx*=Math.pow(0.02,dt);ptr.vy*=Math.pow(0.02,dt);
+  tilt.x+=(tiltT.x-tilt.x)*Math.min(1,dt*3);tilt.y+=(tiltT.y-tilt.y)*Math.min(1,dt*3);
+  S.explodeT+=(S.explode-S.explodeT)*Math.min(1,dt*3);
+  if(S.orbit){setSun(S.az+dt*0.18,0.5+0.18*Math.sin(t*0.07));drawBall()}
+}
+// per-layer placement each frame
+function placement(i){const L=layers[i],s=st[i];const z=L.z;
+  const depthUnit=S.depth*(1+S.explodeT*3.2);                      // px of parallax per z step at full tilt
+  const dz=(z-MAXZ/2);
+  const par=[tilt.x*dz*depthUnit*1.6+S.explodeT*dz*6, tilt.y*dz*depthUnit*1.2-S.explodeT*dz*9];
+  return {par,th:s.th}}
+function shadowOffset(levels){const lz=Math.max(light[2],0.25);const k=(5+S.explodeT*22)*levels*(0.4+S.depth);return[-light[0]/lz*k,light[1]/lz*k]}
+
+// ================= WebGPU =================
+const WGSL=`
+struct G{ xf:vec4f, light:vec4f, p:vec4f };            // p: ambient, strength, sheen, _
+struct D{ rect:vec4f, pv:vec4f, off:vec4f, m:vec4f };  // pv: pivot.xy, theta, mode   off: offset.xy, blur, strength   m: margin
+@group(0) @binding(0) var<uniform> g:G;
+@group(0) @binding(1) var smp:sampler;
+@group(1) @binding(0) var<uniform> d:D;
+@group(1) @binding(1) var ct:texture_2d<f32>;
+@group(1) @binding(2) var nt:texture_2d<f32>;
+struct VO{ @builtin(position) pos:vec4f, @location(0) uv:vec2f };
+@vertex fn vs(@builtin(vertex_index) i:u32)->VO{
+  var q=array<vec2f,6>(vec2f(0,0),vec2f(1,0),vec2f(0,1),vec2f(0,1),vec2f(1,0),vec2f(1,1));
+  let m=d.m.x; let p0=d.rect.xy-vec2f(m)+q[i]*(d.rect.zw+vec2f(2.0*m));
+  let uv=(p0-d.rect.xy)/d.rect.zw;
+  let c=cos(d.pv.z); let s=sin(d.pv.z); let r=p0-d.pv.xy;
+  let p=d.pv.xy+vec2f(r.x*c-r.y*s, r.x*s+r.y*c)+d.off.xy;
+  var o:VO; o.pos=vec4f(p.x*g.xf.x+g.xf.z, p.y*g.xf.y+g.xf.w, 0.0, 1.0); o.uv=uv; return o;
+}
+fn alphaAt(uv:vec2f)->f32{
+  if(uv.x<0.0||uv.y<0.0||uv.x>1.0||uv.y>1.0){return 0.0;}
+  return textureSampleLevel(ct,smp,uv,0.0).a;
+}
+@fragment fn fs(v:VO)->@location(0) vec4f{
+  if(d.pv.w>0.5){
+    // soft shadow: 13-tap disc blur of the leaf silhouette
+    let px=d.off.z/d.rect.zw;
+    var a=alphaAt(v.uv)*0.16;
+    for(var k=0;k<12;k++){
+      let ang=f32(k)*0.5236; let rr=select(0.55,1.0,(k%2)==0);
+      a+=alphaAt(v.uv+vec2f(cos(ang),sin(ang))*px*rr)*0.07;
+    }
+    return vec4f(0.0,0.0,0.0,a*d.off.w);
+  }
+  let c=textureSampleLevel(ct,smp,v.uv,0.0);
+  let nr=textureSampleLevel(nt,smp,v.uv,0.0).rgb;
+  if(c.a<0.003||v.uv.x<0.0||v.uv.y<0.0||v.uv.x>1.0||v.uv.y>1.0){discard;}
+  var n=normalize(nr*2.0-1.0);
+  let cs=cos(d.pv.z); let sn=sin(d.pv.z);
+  n=vec3f(n.x*cs+n.y*sn, -n.x*sn+n.y*cs, n.z);           // normals turn with the leaf
+  let L=normalize(g.light.xyz);
+  let dif=max(dot(n,L),0.0);
+  let h=normalize(L+vec3f(0,0,1));
+  let spec=pow(max(dot(n,h),0.0),30.0)*g.p.z;
+  let col=c.rgb*(g.p.x+g.p.y*dif)+vec3f(spec);
+  return vec4f(clamp(col,vec3f(0),vec3f(1))*c.a, c.a);
+}`;
+
+async function initWebGPU(){
+  if(!navigator.gpu)return null;const adapter=await navigator.gpu.requestAdapter();if(!adapter)return null;
+  const device=await adapter.requestDevice();const ctx=cv.getContext('webgpu');const fmt=navigator.gpu.getPreferredCanvasFormat();
+  ctx.configure({device,format:fmt,alphaMode:'premultiplied'});
+  const mod=device.createShaderModule({code:WGSL});
+  const bgl0=device.createBindGroupLayout({entries:[{binding:0,visibility:GPUShaderStage.VERTEX|GPUShaderStage.FRAGMENT,buffer:{}},{binding:1,visibility:GPUShaderStage.FRAGMENT,sampler:{}}]});
+  const bgl1=device.createBindGroupLayout({entries:[{binding:0,visibility:GPUShaderStage.VERTEX|GPUShaderStage.FRAGMENT,buffer:{}},{binding:1,visibility:GPUShaderStage.FRAGMENT,texture:{}},{binding:2,visibility:GPUShaderStage.FRAGMENT,texture:{}}]});
+  const layout=device.createPipelineLayout({bindGroupLayouts:[bgl0,bgl1]});
+  const over={color:{srcFactor:'one',dstFactor:'one-minus-src-alpha',operation:'add'},alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha',operation:'add'}};
+  const darken={color:{srcFactor:'zero',dstFactor:'one-minus-src-alpha',operation:'add'},alpha:{srcFactor:'zero',dstFactor:'one',operation:'add'}};
+  const mk=blend=>device.createRenderPipeline({layout,vertex:{module:mod,entryPoint:'vs'},fragment:{module:mod,entryPoint:'fs',targets:[{format:fmt,blend}]},primitive:{topology:'triangle-list'}});
+  const pOver=mk(over),pDark=mk(darken);
+  const gbuf=device.createBuffer({size:48,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+  const smp=device.createSampler({magFilter:'linear',minFilter:'linear',addressModeU:'clamp-to-edge',addressModeV:'clamp-to-edge'});
+  const g0=device.createBindGroup({layout:bgl0,entries:[{binding:0,resource:{buffer:gbuf}},{binding:1,resource:smp}]});
+  const tex=im=>{const t=device.createTexture({size:[im.width,im.height],format:'rgba8unorm',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST|GPUTextureUsage.RENDER_ATTACHMENT});device.queue.copyExternalImageToTexture({source:im},{texture:t},[im.width,im.height]);return t.createView()};
+  // three draws per layer: ground shadow, shadow on leaves below, the leaf
+  const items=layers.map(L=>{const cvw=tex(L.cimg),nvw=tex(L.nimg);return [0,1,2].map(()=>{const ub=device.createBuffer({size:64,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+    return {ub,bg:device.createBindGroup({layout:bgl1,entries:[{binding:0,resource:{buffer:ub}},{binding:1,resource:cvw},{binding:2,resource:nvw}]})}})});
+  return {name:'WebGPU',draw(draws){
+    device.queue.writeBuffer(gbuf,0,new Float32Array([...xf(),...light,0,0.30+0.12*(1-S.sun/2),0.95*S.sun,0.06,0]));
+    const enc=device.createCommandEncoder();
+    const pass=enc.beginRenderPass({colorAttachments:[{view:ctx.getCurrentTexture().createView(),clearValue:{r:0,g:0,b:0,a:0},loadOp:'clear',storeOp:'store'}]});
+    draws.forEach(dr=>{const it=items[dr.i][dr.slot];device.queue.writeBuffer(it.ub,0,dr.u);pass.setPipeline(dr.dark?pDark:pOver);pass.setBindGroup(0,g0);pass.setBindGroup(1,it.bg);pass.draw(6)});
+    pass.end();device.queue.submit([enc.finish()]);
+  }};
+}
+
+// ================= WebGL2 fallback =================
+function initWebGL2(){
+  const gl=cv.getContext('webgl2',{premultipliedAlpha:true,alpha:true});if(!gl)return null;
+  const vs=`#version 300 es
+uniform vec4 xf; uniform vec4 rect,pv,off,mm; out vec2 uv;
+void main(){ vec2 q[6]=vec2[6](vec2(0,0),vec2(1,0),vec2(0,1),vec2(0,1),vec2(1,0),vec2(1,1));
+  float m=mm.x; vec2 p0=rect.xy-vec2(m)+q[gl_VertexID]*(rect.zw+vec2(2.0*m)); uv=(p0-rect.xy)/rect.zw;
+  float c=cos(pv.z),s=sin(pv.z); vec2 r=p0-pv.xy; vec2 p=pv.xy+vec2(r.x*c-r.y*s,r.x*s+r.y*c)+off.xy;
+  gl_Position=vec4(p.x*xf.x+xf.z,p.y*xf.y+xf.w,0,1);}`;
+  const fs=`#version 300 es
+precision highp float; uniform sampler2D ct,nt; uniform vec4 light,pr,rect,pv,off; in vec2 uv; out vec4 o;
+float aAt(vec2 u){ if(u.x<0.0||u.y<0.0||u.x>1.0||u.y>1.0) return 0.0; return texture(ct,u).a; }
+void main(){
+  if(pv.w>0.5){ vec2 px=off.z/rect.zw; float a=aAt(uv)*0.16;
+    for(int k=0;k<12;k++){ float ang=float(k)*0.5236; float rr=(k%2==0)?1.0:0.55; a+=aAt(uv+vec2(cos(ang),sin(ang))*px*rr)*0.07; }
+    o=vec4(0,0,0,a*off.w); return; }
+  vec4 c=texture(ct,uv); vec3 nr=texture(nt,uv).rgb;
+  if(c.a<0.003||uv.x<0.0||uv.y<0.0||uv.x>1.0||uv.y>1.0) discard;
+  vec3 n=normalize(nr*2.0-1.0); float cs=cos(pv.z),sn=sin(pv.z); n=vec3(n.x*cs+n.y*sn,-n.x*sn+n.y*cs,n.z);
+  vec3 L=normalize(light.xyz); float dif=max(dot(n,L),0.0); vec3 h=normalize(L+vec3(0,0,1));
+  vec3 col=c.rgb*(pr.x+pr.y*dif)+vec3(pow(max(dot(n,h),0.0),30.0)*pr.z);
+  o=vec4(clamp(col,0.0,1.0)*c.a,c.a);}`;
+  const sh=(t,s)=>{const x=gl.createShader(t);gl.shaderSource(x,s);gl.compileShader(x);if(!gl.getShaderParameter(x,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(x));return x};
+  const pg=gl.createProgram();gl.attachShader(pg,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pg,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(pg);gl.useProgram(pg);
+  const U={};['xf','rect','pv','off','mm','light','pr','ct','nt'].forEach(n=>U[n]=gl.getUniformLocation(pg,n));gl.uniform1i(U.ct,0);gl.uniform1i(U.nt,1);
+  gl.bindVertexArray(gl.createVertexArray());gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL,gl.NONE);gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);
+  const tex=im=>{const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,im);
+    [gl.TEXTURE_MIN_FILTER,gl.TEXTURE_MAG_FILTER].forEach(p=>gl.texParameteri(gl.TEXTURE_2D,p,gl.LINEAR));[gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T].forEach(p=>gl.texParameteri(gl.TEXTURE_2D,p,gl.CLAMP_TO_EDGE));return t};
+  const T=layers.map(L=>({c:tex(L.cimg),n:tex(L.nimg)}));gl.enable(gl.BLEND);
+  return {name:'WebGL2 (WebGPU not available in this browser)',draw(draws){
+    gl.viewport(0,0,cv.width,cv.height);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.uniform4fv(U.xf,xf());gl.uniform4f(U.light,...light,0);gl.uniform4f(U.pr,0.30+0.12*(1-S.sun/2),0.95*S.sun,0.06,0);
+    draws.forEach(dr=>{const u=dr.u;gl.uniform4fv(U.rect,u.subarray(0,4));gl.uniform4fv(U.pv,u.subarray(4,8));gl.uniform4fv(U.off,u.subarray(8,12));gl.uniform4fv(U.mm,u.subarray(12,16));
+      if(dr.dark)gl.blendFuncSeparate(gl.ZERO,gl.ONE_MINUS_SRC_ALPHA,gl.ZERO,gl.ONE);else gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
+      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,T[dr.i].c);gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,T[dr.i].n);gl.drawArrays(gl.TRIANGLES,0,6)});
+  }};
+}
+
+// ---------- build the frame's draw list
+function buildDraws(){
+  const out=[];const sh=S.shadow;
+  const P=layers.map((L,i)=>placement(i));
+  // 1) every leaf's shadow on the paper (the paper sits a few levels below the back layer)
+  if(sh>0.01)layers.forEach((L,i)=>{if(!L.leaf)return;const lev=L.z+3;const so=shadowOffset(lev);const blur=10+lev*1.1+S.explodeT*20;
+    out.push({i,slot:0,dark:false,u:new Float32Array([L.x,L.y,L.w,L.h, L.px,L.py,P[i].th,1, P[i].par[0]*0.25+so[0],P[i].par[1]*0.25+so[1],blur,0.17*sh/(1+S.explodeT*0.8), blur+4,0,0,0])})});
+  // 2) back to front: shadow onto what's already drawn, then the leaf
+  layers.forEach((L,i)=>{
+    if(L.leaf&&sh>0.01&&i>0){const so=shadowOffset(1.6);const blur=7+S.explodeT*10;
+      out.push({i,slot:1,dark:true,u:new Float32Array([L.x,L.y,L.w,L.h, L.px,L.py,P[i].th,1, P[i].par[0]+so[0],P[i].par[1]+so[1],blur,0.42*sh, blur+4,0,0,0])})}
+    out.push({i,slot:2,dark:false,u:new Float32Array([L.x,L.y,L.w,L.h, L.px,L.py,P[i].th,0, P[i].par[0],P[i].par[1],0,0, 0,0,0,0])});
+  });
+  return out;
+}
+
+// ---------- light ball
+const ball=$('ball'),bc=ball.getContext('2d');
+function drawBall(){const d=window.devicePixelRatio||1,Z=Math.round(64*d);if(ball.width!==Z)ball.width=ball.height=Z;
+  const im=bc.createImageData(Z,Z),o=im.data,R=Z/2,[lx,ly,lz]=light;
+  for(let y=0;y<Z;y++)for(let x=0;x<Z;x++){const nx=(x+0.5-R)/R,ny=-(y+0.5-R)/R,r2=nx*nx+ny*ny,p=(y*Z+x)*4;if(r2>1){o[p+3]=0;continue}
+    const nz=Math.sqrt(1-r2),dd=Math.max(0,nx*lx+ny*ly+nz*lz);const v=Math.min(255,40+200*dd*Math.min(1.3,S.sun));o[p]=v*0.98;o[p+1]=v;o[p+2]=v*0.86;o[p+3]=255}
+  bc.putImageData(im,0,0)}
+function ballSet(e){const r=ball.getBoundingClientRect();let x=((e.clientX-r.left)/r.width)*2-1,y=-(((e.clientY-r.top)/r.height)*2-1);const m=Math.hypot(x,y);if(m>0.98){x*=0.98/m;y*=0.98/m}
+  setSun(Math.atan2(y,x),Math.acos(Math.min(1,Math.hypot(x,y))));S.orbit=false;$('orbit').setAttribute('aria-pressed','false');drawBall()}
+ball.addEventListener('pointerdown',e=>{ball.setPointerCapture(e.pointerId);ballSet(e)});
+ball.addEventListener('pointermove',e=>{if(e.buttons)ballSet(e)});
+
+// ---------- controls
+$('breeze').oninput=e=>S.breeze=e.target.value/100;
+$('depth').oninput=e=>S.depth=e.target.value/100;
+$('shadow').oninput=e=>S.shadow=e.target.value/100;
+$('sun').oninput=e=>{S.sun=e.target.value/100;drawBall()};
+$('orbit').onclick=()=>{S.orbit=!S.orbit;$('orbit').setAttribute('aria-pressed',S.orbit)};
+$('explode').onclick=()=>{S.explode=S.explode?0:1;$('explode').setAttribute('aria-pressed',!!S.explode)};
+$('calm').onclick=()=>{S.calm=!S.calm;$('calm').setAttribute('aria-pressed',S.calm)};
+const reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+if(reduce){S.breeze=0.1;$('breeze').value=10;S.orbit=false;$('orbit').setAttribute('aria-pressed','false')}
+
+// ---------- start
+let R=null,why='';
+try{R=await initWebGPU()}catch(e){why=String(e&&e.message||e)}
+if(!R){try{R=initWebGL2()}catch(e){why+=' '+String(e&&e.message||e)}}
+if(!R){$('err').hidden=false;$('err').textContent='This browser can’t run WebGPU or WebGL2, so the plant can’t be drawn here.';return}
+if(why)console.warn('renderer:',why);
+$('api').textContent=R.name;
+function resize(){const d=Math.min(window.devicePixelRatio||1,2);cv.width=Math.round(stage.clientWidth*d);cv.height=Math.round(stage.clientHeight*d);computeView()}
+window.addEventListener('resize',resize);resize();drawBall();
+let last=performance.now(),T=0;
+function frame(now){const dt=Math.min(0.05,(now-last)/1000);last=now;T+=dt;
+  // sub-step the springs for stability
+  for(let k=0;k<3;k++)step(dt/3,T);
+  R.draw(buildDraws());requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+})();
+</script>

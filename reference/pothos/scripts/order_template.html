@@ -1,0 +1,170 @@
+<title>Pothos Leaf Order</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: photo canvas on the left, a narrow decision panel on the right (stacks below on phones) */
+:root{
+  --bg:#eef0ec; --panel:#ffffff; --fg:#1f2620; --muted:#5d6a5f; --line:#d3d9d2;
+  --a:#d6246e; --b:#1f7fd1; --ok:#2f7d4a; --warn:#b5521b; --stage:#c9cec7; --chip:#f3f5f2;
+  --f-ui:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#151a16; --panel:#1d241f; --fg:#e7ece6; --muted:#9aa89d; --line:#2f3a32;
+  --a:#ff5a9a; --b:#5aaeff; --ok:#6fcf8f; --warn:#f0965a; --stage:#0f1310; --chip:#252e28; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#151a16; --panel:#1d241f; --fg:#e7ece6; --muted:#9aa89d; --line:#2f3a32;
+  --a:#ff5a9a; --b:#5aaeff; --ok:#6fcf8f; --warn:#f0965a; --stage:#0f1310; --chip:#252e28; color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-ui);display:flex;overflow:hidden}
+#stage{flex:1;position:relative;background:var(--stage);min-width:0;touch-action:none}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+aside{width:340px;max-width:100%;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.sec{padding-block:14px;padding-inline:16px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+h1{font-size:15px;font-weight:600;margin:0}
+.muted{color:var(--muted);font-size:13px;line-height:1.45}
+.q{font-size:14px;font-weight:600}
+.choice{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+button{font:500 13px var(--f-ui);color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 12px;cursor:pointer}
+button:hover{background:color-mix(in srgb,var(--fg) 6%,var(--panel))}
+button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+.pick{padding:12px 10px;font-size:15px;font-weight:600;border-width:2px}
+.pick.a{border-color:var(--a);color:var(--a)} .pick.b{border-color:var(--b);color:var(--b)}
+.pick.on.a{background:var(--a);color:var(--panel)} .pick.on.b{background:var(--b);color:var(--panel)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.stat{font:400 12px var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.stat.ok{color:var(--ok)}
+.bar{height:4px;background:var(--chip);border-radius:2px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--ok);width:0}
+.list{overflow:auto;flex:1;min-height:120px;padding-block:8px;padding-inline:16px;display:flex;flex-direction:column;gap:14px}
+.pairs{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px}
+.pairs button{font:500 12px var(--f-mono);padding:6px 4px;background:var(--chip);border-color:transparent}
+.pairs button.done{background:color-mix(in srgb,var(--ok) 16%,var(--panel))}
+.pairs button.cur{border-color:var(--fg)}
+.pairs button.bad{background:color-mix(in srgb,var(--warn) 22%,var(--panel))}
+.order{font:400 13px var(--f-mono);line-height:1.7;font-variant-numeric:tabular-nums}
+.warn{color:var(--warn);font-size:13px}
+.lbl{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+@media (max-width:760px){body{flex-direction:column}#stage{flex:0 0 52vh}aside{width:auto;border-left:0;border-top:1px solid var(--line);flex:1}}
+</style>
+
+<div id="stage"><canvas id="cv"></canvas></div>
+<aside>
+  <div class="sec">
+    <h1>Which leaf is in front?</h1>
+    <div class="muted">For each overlapping pair, pick the leaf that sits on top where they meet. The overlap is hatched. Keys: <span class="stat">1</span> / <span class="stat">2</span> to pick, <span class="stat">←</span> <span class="stat">→</span> to step.</div>
+    <div class="q" id="q">Pair</div>
+    <div class="choice"><button class="pick a" id="pa">Leaf</button><button class="pick b" id="pb">Leaf</button></div>
+    <div class="row"><button id="prev">Previous</button><button id="next">Next</button><button id="whole">Whole painting</button></div>
+    <div class="bar"><i id="prog"></i></div>
+    <div class="row"><span class="stat" id="count">0 / 0 answered</span><span class="stat" id="save">Not saved</span></div>
+  </div>
+  <div class="list">
+    <div class="lbl">Pairs</div>
+    <div class="pairs" id="pairs"></div>
+    <div class="lbl">Order, back to front</div>
+    <div id="cyc" class="warn" hidden></div>
+    <div class="order" id="order">Answer the pairs to build the order.</div>
+    <div class="row"><button id="copy">Copy order</button></div>
+  </div>
+</aside>
+
+<script>
+(()=>{
+const FULL_W=3024, FULL_H=4032;
+const LEAVES=__LEAVES__;
+const PAIRS=__PAIRS__.map(p=>({a:p[0],b:p[1],area:p[2],cx:p[3],cy:p[4]}));
+const img=new Image(); img.src="data:image/jpeg;base64,__IMG__";
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d'), stage=document.getElementById('stage');
+const key=p=>p.a+'-'+p.b;
+let ans={};   // "a-b" -> index of front leaf (0-based)
+let cur=0, whole=false, dpr=1, view={s:1,x:0,y:0}, target=null;
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const N=i=>i+1;
+
+function bbox(idx){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;idx.forEach(i=>LEAVES[i].forEach(([x,y])=>{x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y)}));return [x0,y0,x1,y1]}
+function frame(){
+  const r=stage.getBoundingClientRect();let b;
+  if(whole){b=bbox(LEAVES.map((_,i)=>i))}else{const p=PAIRS[cur];b=bbox([p.a,p.b])}
+  const pad=120,w=b[2]-b[0]+pad*2,h=b[3]-b[1]+pad*2;const s=Math.min(r.width/w,r.height/h);
+  view={s,x:(r.width-w*s)/2-(b[0]-pad)*s,y:(r.height-h*s)/2-(b[1]-pad)*s};draw();
+}
+function resize(){dpr=window.devicePixelRatio||1;const r=stage.getBoundingClientRect();cv.width=r.width*dpr;cv.height=r.height*dpr;frame()}
+function path(i){const P=LEAVES[i];ctx.beginPath();P.forEach(([x,y],k)=>{const sx=x*view.s+view.x,sy=y*view.s+view.y;k?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy)});ctx.closePath()}
+let hatchPat=null;
+function hatch(color){const c=document.createElement('canvas');c.width=c.height=10;const g=c.getContext('2d');g.strokeStyle=color;g.lineWidth=2.5;g.beginPath();g.moveTo(0,10);g.lineTo(10,0);g.moveTo(-5,5);g.lineTo(5,-5);g.moveTo(5,15);g.lineTo(15,5);g.stroke();return ctx.createPattern(c,'repeat')}
+function label(i,color){const P=LEAVES[i];let sx=0,sy=0;P.forEach(([x,y])=>{sx+=x;sy+=y});sx/=P.length;sy/=P.length;
+  const x=sx*view.s+view.x,y=sy*view.s+view.y;ctx.beginPath();ctx.arc(x,y,14,0,7);ctx.fillStyle='#fff';ctx.fill();ctx.lineWidth=2.5;ctx.strokeStyle=color;ctx.stroke();
+  ctx.fillStyle='#1f2620';ctx.font='600 13px '+css('--f-ui');ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(N(i),x,y+0.5)}
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,cv.width,cv.height);
+  if(img.complete&&img.naturalWidth){ctx.drawImage(img,view.x,view.y,FULL_W*view.s,FULL_H*view.s)}
+  const p=PAIRS[cur], A=css('--a'), B=css('--b');
+  // dim everything outside the current pair
+  ctx.save();ctx.fillStyle='rgba(20,26,22,0.45)';ctx.beginPath();ctx.rect(0,0,cv.width,cv.height);
+  if(!whole){[p.a,p.b].forEach(i=>{LEAVES[i].forEach(([x,y],k)=>{const sx=x*view.s+view.x,sy=y*view.s+view.y;k?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy)});ctx.closePath()});ctx.fill('evenodd')}
+  ctx.restore();
+  // other outlines faint
+  LEAVES.forEach((_,i)=>{if(!whole&&(i===p.a||i===p.b))return;path(i);ctx.lineWidth=1.2;ctx.strokeStyle='rgba(255,255,255,0.55)';ctx.stroke()});
+  if(!whole){
+    // overlap hatch
+    ctx.save();path(p.a);ctx.clip();path(p.b);ctx.fillStyle=hatch('rgba(255,255,255,0.85)');ctx.fill();ctx.restore();
+    const f=ans[key(p)];
+    // draw back leaf first, front leaf outline last so it reads on top
+    const order=f===p.a?[p.b,p.a]:f===p.b?[p.a,p.b]:[p.a,p.b];
+    order.forEach(i=>{const c=i===p.a?A:B;path(i);ctx.lineWidth=f===i?4:2.5;ctx.strokeStyle='#fff';ctx.stroke();ctx.lineWidth=f===i?3:1.8;ctx.strokeStyle=c;if(f!==undefined&&f!==i)ctx.setLineDash([7,6]);ctx.stroke();ctx.setLineDash([])});
+    label(p.a,A);label(p.b,B);
+  }else{LEAVES.forEach((_,i)=>label(i,'#5d6a5f'))}
+}
+img.onload=draw;
+
+// ---- order (topological sort over "front" edges: back -> front)
+function computeOrder(){
+  const n=LEAVES.length, adj=Array.from({length:n},()=>[]), indeg=Array(n).fill(0);
+  PAIRS.forEach(p=>{const f=ans[key(p)];if(f===undefined)return;const back=f===p.a?p.b:p.a;adj[back].push(f);indeg[f]++});
+  const q=[];for(let i=0;i<n;i++)if(!indeg[i])q.push(i);
+  const out=[];const deg=indeg.slice();
+  while(q.length){q.sort((x,y)=>x-y);const v=q.shift();out.push(v);adj[v].forEach(w=>{if(--deg[w]===0)q.push(w)})}
+  if(out.length<n){const stuck=[];for(let i=0;i<n;i++)if(!out.includes(i))stuck.push(i);return{order:null,stuck}}
+  return{order:out,stuck:[]}
+}
+function render(){
+  const p=PAIRS[cur],f=ans[key(p)];
+  document.getElementById('q').textContent=`Pair ${cur+1} of ${PAIRS.length}: leaf ${N(p.a)} and leaf ${N(p.b)}`;
+  const pa=document.getElementById('pa'),pb=document.getElementById('pb');
+  pa.textContent=`${N(p.a)} in front`;pb.textContent=`${N(p.b)} in front`;
+  pa.classList.toggle('on',f===p.a);pb.classList.toggle('on',f===p.b);
+  const done=PAIRS.filter(q=>ans[key(q)]!==undefined).length;
+  document.getElementById('count').textContent=`${done} / ${PAIRS.length} answered`;
+  document.getElementById('prog').style.width=(100*done/PAIRS.length)+'%';
+  const {order,stuck}=computeOrder();
+  const box=document.getElementById('pairs');box.innerHTML='';
+  PAIRS.forEach((q,i)=>{const b=document.createElement('button');const fa=ans[key(q)];
+    b.textContent=fa===undefined?`${N(q.a)}·${N(q.b)}`:`${N(fa)}>${N(fa===q.a?q.b:q.a)}`;
+    b.className=(fa!==undefined?'done ':'')+(i===cur?'cur ':'')+(stuck.includes(q.a)&&stuck.includes(q.b)&&fa!==undefined?'bad':'');
+    b.title=`Leaf ${N(q.a)} and leaf ${N(q.b)}`;b.onclick=()=>{cur=i;whole=false;frame();render()};box.appendChild(b)});
+  const cyc=document.getElementById('cyc'),ord=document.getElementById('order');
+  if(!order){cyc.hidden=false;cyc.textContent=`These answers contradict each other (a loop among leaves ${stuck.map(N).join(', ')}). Check the orange pairs.`;ord.textContent=''}
+  else{cyc.hidden=true;ord.innerHTML=order.map((v,z)=>`z ${String(z).padStart(2,' ')} &nbsp;leaf ${N(v)}`).join('<br>')+(done<PAIRS.length?'<br><span class="muted">Partial: unanswered pairs can still change this.</span>':'')}
+  draw();
+}
+function pick(i){const p=PAIRS[cur];ans[key(p)]=i;render();scheduleSave();setTimeout(()=>{const nx=PAIRS.findIndex((q,k)=>k>cur&&ans[key(q)]===undefined);const any=PAIRS.findIndex(q=>ans[key(q)]===undefined);const t=nx>=0?nx:any;if(t>=0&&t!==cur){cur=t;frame();render()}},260)}
+document.getElementById('pa').onclick=()=>pick(PAIRS[cur].a);
+document.getElementById('pb').onclick=()=>pick(PAIRS[cur].b);
+document.getElementById('prev').onclick=()=>{cur=(cur-1+PAIRS.length)%PAIRS.length;whole=false;frame();render()};
+document.getElementById('next').onclick=()=>{cur=(cur+1)%PAIRS.length;whole=false;frame();render()};
+document.getElementById('whole').onclick=()=>{whole=!whole;document.getElementById('whole').textContent=whole?'Back to pair':'Whole painting';frame()};
+document.addEventListener('keydown',e=>{if(e.key==='1')document.getElementById('pa').click();else if(e.key==='2')document.getElementById('pb').click();else if(e.key==='ArrowLeft')document.getElementById('prev').click();else if(e.key==='ArrowRight')document.getElementById('next').click()});
+const result=()=>{const {order}=computeOrder();const pairs={};PAIRS.forEach(p=>{const f=ans[key(p)];if(f!==undefined)pairs[`${N(p.a)}-${N(p.b)}`]=N(f)});return{front:pairs,order_back_to_front:order?order.map(N):null}};
+document.getElementById('copy').onclick=async e=>{const b=e.currentTarget;try{await navigator.clipboard.writeText(JSON.stringify(result()));b.textContent='Copied'}catch(_){b.textContent='Copy failed'}setTimeout(()=>b.textContent='Copy order',1500)};
+
+// ---- persistence
+let db=null,t=null;const saveEl=document.getElementById('save');
+function scheduleSave(){if(!db){saveEl.textContent='Not saved, use Copy order';return}saveEl.textContent='Saving…';saveEl.className='stat';clearTimeout(t);t=setTimeout(async()=>{try{await db.doc('order/main').set({...result(),updated:Date.now()});saveEl.textContent='Saved';saveEl.className='stat ok'}catch(_){saveEl.textContent='Save failed, use Copy order'}},600)}
+(async()=>{try{db=await window.claude?.use?.('db')}catch(_){db=null}
+  if(!db){saveEl.textContent='Not saved, use Copy order';return}
+  try{const s=await db.doc('order/main').get();const d=s&&s.exists?s.data():null;
+    if(d&&d.front){PAIRS.forEach(p=>{const f=d.front[`${N(p.a)}-${N(p.b)}`];if(f)ans[key(p)]=f-1});saveEl.textContent='Saved';saveEl.className='stat ok';render()}else saveEl.textContent='Ready'}catch(_){saveEl.textContent='Ready'}})();
+
+window.addEventListener('resize',resize);
+resize();render();
+})();
+</script>
