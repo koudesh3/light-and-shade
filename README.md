@@ -25,12 +25,15 @@ tracked by git.
 
 Drop a PNG, JPEG or WebP anywhere on the home page, or click New painting.
 
+Two fingers on a trackpad pan, and a pinch or a mouse wheel zooms. Both work on every canvas.
+
 **Cutting:** click around a piece or drag to draw it. Click the first point or press Return to close
-it. Scroll or pinch to zoom, and hold Space and drag to pan. Select a piece in the list to drag its
+it. To pan by dragging, switch to the Move tool (M, and C to go back) or hold Space. Select a piece in the list to drag its
 points or delete it. Backspace removes the last point, Esc cancels, and Cmd+Z undoes. Later pieces sit
 in front. Done cuts them out into layers.
 
-**Lighting:** drag the painting or the ball to move the light. Click a layer to hide it. Double-click,
+**Lighting:** drag the painting or the ball to move the light. Hold Space and drag to pan. Click a
+layer to hide it. Double-click,
 press F or click the zoom level to fit. Keys 1, 2 and 3 switch views, and O orbits the light.
 
 ## Layout

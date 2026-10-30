@@ -174,12 +174,7 @@ impl LightRoom {
             self.view = View::default();
         }
         if let Some(p) = response.hover_pos() {
-            let (scroll, pinch) = ui.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
-            let factor = pinch * (scroll * 0.002).exp();
-            if factor != 1.0 {
-                let at = (p - rect.min) * ppp;
-                self.view.zoom_at(factor, [at.x, at.y], target, painting);
-            }
+            crate::canvas::navigate(ui, &mut self.view, p, rect, painting);
         }
 
         let (id, size) = self.draw(target);

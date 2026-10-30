@@ -1,7 +1,7 @@
 //! The cutting board: trace pieces out of a painting.
 
-use crate::design;
 use crate::studio::Nav;
+use crate::{canvas, design};
 use anyhow::{Context, Result};
 use eframe::egui::{
     self, Color32, ColorImage, Key, Pos2, Rect, Sense, Shape, Stroke, TextureHandle, TextureOptions, pos2,
@@ -16,6 +16,13 @@ const REACH: f32 = 10.0;
 const STROKE_STEP: f32 = 6.0;
 const HISTORY: usize = 200;
 
+/// What dragging on the canvas does.
+#[derive(Clone, Copy, PartialEq)]
+enum Tool {
+    Cut,
+    Move,
+}
+
 #[derive(Clone)]
 struct Snapshot {
     cuts: Vec<Cut>,
@@ -26,6 +33,7 @@ pub struct CutBoard {
     project: Project,
     texture: TextureHandle,
     view: View,
+    tool: Tool,
     draft: Vec<[f32; 2]>,
     selected: Option<usize>,
     /// A point being dragged: the cut it's in (`None` for the draft) and its index.
@@ -62,6 +70,7 @@ impl CutBoard {
             texture: load_texture(ctx, &project)?,
             project,
             view: View::default(),
+            tool: Tool::Cut,
             draft: Vec::new(),
             selected: None,
             grabbed: None,
@@ -124,14 +133,22 @@ impl CutBoard {
     }
 
     fn keys(&mut self, ctx: &egui::Context) {
-        let (enter, escape, back, undo) = ctx.input(|i| {
+        let (cut, take_move, enter, escape, back, undo) = ctx.input(|i| {
             (
+                i.key_pressed(Key::C),
+                i.key_pressed(Key::M),
                 i.key_pressed(Key::Enter),
                 i.key_pressed(Key::Escape),
                 i.key_pressed(Key::Backspace) || i.key_pressed(Key::Delete),
                 i.modifiers.command && i.key_pressed(Key::Z),
             )
         });
+        if cut {
+            self.tool = Tool::Cut;
+        }
+        if take_move {
+            self.tool = Tool::Move;
+        }
         if enter {
             self.close_draft();
         }
@@ -154,19 +171,16 @@ impl CutBoard {
 
     fn toolbar(&mut self, ui: &mut egui::Ui) -> Option<Nav> {
         let mut nav = None;
-        let rect = ui.max_rect();
-        ui.painter().text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
-            &self.project.name,
-            egui::FontId::proportional(13.0),
-            design::INK,
-        );
+        let selected = (self.tool == Tool::Move) as usize;
+        if let Some(i) = design::tabs(ui, ui.max_rect().center(), &["Cut", "Move"], selected) {
+            self.tool = [Tool::Cut, Tool::Move][i];
+        }
         ui.horizontal_centered(|ui| {
             ui.add_space(design::TRAFFIC_LIGHTS);
             if design::button(ui, "‹ Paintings").clicked() {
                 nav = Some(Nav::Home);
             }
+            ui.colored_label(design::MUTED, &self.project.name);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let finished = !self.project.cuts.is_empty() || self.draft.len() >= 3;
                 if finished && design::primary_button(ui, "Done").clicked() {
@@ -292,27 +306,31 @@ impl CutBoard {
         let rect = ui.max_rect();
         let response = ui.allocate_rect(rect, Sense::click_and_drag());
         let painting = self.painting();
-        let target = [rect.width(), rect.height()];
-        let panning =
-            ui.input(|i| i.key_down(Key::Space) || i.pointer.middle_down() || i.pointer.secondary_down());
+        let (space, other_button, primary) = ui.input(|i| {
+            (
+                i.key_down(Key::Space),
+                i.pointer.middle_down() || i.pointer.secondary_down(),
+                i.pointer.primary_down(),
+            )
+        });
+        let panning = self.tool == Tool::Move || space || other_button;
         if response.dragged() && panning {
-            self.view.pan[0] += response.drag_delta().x;
-            self.view.pan[1] += response.drag_delta().y;
+            let ppp = ui.pixels_per_point();
+            self.view.pan[0] += response.drag_delta().x * ppp;
+            self.view.pan[1] += response.drag_delta().y * ppp;
         }
         if let Some(p) = response.hover_pos() {
-            let (scroll, pinch) = ui.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
-            let factor = pinch * (scroll * 0.002).exp();
-            if factor != 1.0 {
-                let at = p - rect.min;
-                self.view.zoom_at(factor, [at.x, at.y], target, painting);
-            }
+            canvas::navigate(ui, &mut self.view, p, rect, painting);
+            let icon = match (panning, primary || other_button) {
+                (true, true) => egui::CursorIcon::Grabbing,
+                (true, false) => egui::CursorIcon::Grab,
+                (false, _) => egui::CursorIcon::Crosshair,
+            };
+            ui.ctx().set_cursor_icon(icon);
         }
         self.pointer(ui, response.contains_pointer(), panning, rect);
 
-        let (scale, origin) = (
-            self.view.scale(target, painting),
-            self.view.origin(target, painting),
-        );
+        let (scale, origin) = canvas::placement(ui, &self.view, rect, painting);
         let to_screen = |p: [f32; 2]| rect.min + vec2(origin[0] + p[0] * scale, origin[1] + p[1] * scale);
         let painter = ui.painter_at(rect);
         let image = Rect::from_min_size(to_screen([0.0, 0.0]), egui::Vec2::from(painting) * scale);

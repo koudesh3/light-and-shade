@@ -1,6 +1,7 @@
 //! The Light and Shade studio.
 
 mod ball;
+mod canvas;
 mod cut;
 mod design;
 mod home;

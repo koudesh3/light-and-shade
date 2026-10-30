@@ -103,6 +103,23 @@ impl Scripted {
                 },
             ]);
         }
+        // LAS_PAN: `x,y` two-finger scroll in points. LAS_PINCH: a pinch zoom factor.
+        let middle = Pos2::new(680.0, 440.0);
+        if let Some(delta) = points(&var("LAS_PAN").unwrap_or_default()).first() {
+            input.push_back(vec![
+                Event::PointerMoved(middle),
+                Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: delta.to_vec2(),
+                    phase: egui::TouchPhase::Move,
+                    source: egui::MouseWheelSource::Trackpad,
+                    modifiers: Default::default(),
+                },
+            ]);
+        }
+        if let Some(factor) = var("LAS_PINCH").and_then(|f| f.parse().ok()) {
+            input.push_back(vec![Event::PointerMoved(middle), Event::Zoom(factor)]);
+        }
         Self {
             shot: var("LAS_SHOT").map(PathBuf::from),
             mode: var("LAS_MODE").and_then(|m| match m.as_str() {
