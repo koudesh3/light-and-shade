@@ -190,7 +190,7 @@ impl CutBoard {
                     Nav::Home
                 });
             }
-            ui.colored_label(design::MUTED, &self.project.name);
+            design::muted_line(ui, &self.project.name, 260.0);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let finished = !self.project.cuts.is_empty() || self.draft.len() >= 3;
                 if finished && design::primary_button(ui, "Done").clicked() {

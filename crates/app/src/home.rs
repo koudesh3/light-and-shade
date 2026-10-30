@@ -2,7 +2,7 @@
 
 use crate::design;
 use crate::studio::Nav;
-use eframe::egui::{self, ColorImage, TextureHandle, TextureOptions, Vec2, vec2};
+use eframe::egui::{self, ColorImage, Pos2, TextureHandle, TextureOptions, Vec2, vec2};
 use las_core::{Project, THUMBNAIL};
 use std::path::Path;
 
@@ -15,6 +15,8 @@ struct Card {
 
 pub struct Home {
     cards: Vec<Card>,
+    /// The card whose menu is open, and where the menu sits.
+    menu: Option<(usize, Pos2)>,
 }
 
 fn thumbnail(ctx: &egui::Context, project: &Project) -> Option<TextureHandle> {
@@ -45,11 +47,12 @@ impl Home {
                 project,
             })
             .collect();
-        Self { cards }
+        Self { cards, menu: None }
     }
 
     pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Nav> {
         let mut nav = None;
+        let mut opened = false;
         let margin = egui::Margin {
             left: 64,
             right: 64,
@@ -67,17 +70,32 @@ impl Home {
                         if design::new_card(ui, CARD, "New painting", "Drop an image anywhere").clicked() {
                             nav = pick_image().map(Nav::New);
                         }
-                        for card in &self.cards {
+                        for (i, card) in self.cards.iter().enumerate() {
                             let image = card.thumbnail.as_ref().map(|t| (t.id(), t.size_vec2()));
+                            let menu_open = self.menu.is_some_and(|(open, _)| open == i);
+                            let name = &card.project.name;
                             let response =
-                                design::card(ui, CARD, image, &card.project.name, &note(&card.project));
-                            if response.clicked() {
+                                design::card(ui, CARD, image, name, &note(&card.project), menu_open);
+                            if let Some(at) = response.menu {
+                                self.menu = if menu_open { None } else { Some((i, at)) };
+                                opened = true;
+                            } else if response.open.clicked() {
                                 nav = Some(open(&card.project));
                             }
                         }
                     });
                 });
             });
+        if let Some((i, at)) = self.menu {
+            match design::menu(ui.ctx(), at, "Move to Trash") {
+                design::MenuChoice::Chosen => {
+                    nav = Some(Nav::Trash(self.cards[i].project.dir.clone()));
+                    self.menu = None;
+                }
+                design::MenuChoice::Dismissed if !opened => self.menu = None,
+                _ => {}
+            }
+        }
         nav
     }
 }

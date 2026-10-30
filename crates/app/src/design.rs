@@ -1,6 +1,7 @@
 //! The design system: white surfaces, black Inter, squircles, and nothing else.
 //! Every control in the app comes from here, so a change here changes the whole app.
 
+use eframe::egui::text::LayoutJob;
 use eframe::egui::{
     self, Align2, Color32, FontData, FontDefinitions, FontFamily, FontId, Pos2, Rect, Response, Sense, Shape,
     Stroke, Ui, Vec2, pos2, vec2,
@@ -158,16 +159,29 @@ pub fn toast(ctx: &egui::Context, text: &str) {
         });
 }
 
+/// Text on one line, cut off with an ellipsis if it's wider than `width`.
+fn one_line(ui: &Ui, text: &str, font: FontId, color: Color32, width: f32) -> Arc<egui::Galley> {
+    let mut job = LayoutJob::simple(text.to_owned(), font, color, width);
+    job.wrap.max_rows = 1;
+    job.wrap.break_anywhere = true;
+    job.wrap.overflow_character = Some('…');
+    ui.fonts_mut(|f| f.layout_job(job))
+}
+
+/// Muted text in a row, no wider than `width`.
+pub fn muted_line(ui: &mut Ui, text: &str, width: f32) {
+    let galley = one_line(ui, text, regular(TEXT), MUTED, width);
+    let (rect, _) = ui.allocate_exact_size(vec2(galley.size().x, ROW), Sense::hover());
+    let top = rect.center().y - galley.size().y / 2.0;
+    ui.painter().galley(pos2(rect.left(), top), galley, MUTED);
+}
+
 /// A quiet label above a group of controls.
 pub fn heading(ui: &mut Ui, text: &str) {
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::hover());
-    ui.painter().text(
-        rect.left_center(),
-        Align2::LEFT_CENTER,
-        text,
-        medium(HEADING),
-        MUTED,
-    );
+    let galley = one_line(ui, text, medium(HEADING), MUTED, rect.width());
+    let top = rect.center().y - galley.size().y / 2.0;
+    ui.painter().galley(pos2(rect.left(), top), galley, MUTED);
 }
 
 /// Air between groups.
@@ -188,8 +202,10 @@ pub fn row(ui: &mut Ui, text: &str, selected: bool, color: Color32) -> Response 
     ui.painter()
         .add(squircle(rect, RADIUS, hover_fill(ui, &response, selected)));
     let font = if selected { medium(TEXT) } else { regular(TEXT) };
-    let at = rect.left_center() + vec2(8.0, 0.0);
-    ui.painter().text(at, Align2::LEFT_CENTER, text, font, color);
+    // Leave room for what a caller draws at the end of the row.
+    let galley = one_line(ui, text, font, color, rect.width() - 36.0);
+    let at = pos2(rect.left() + 8.0, rect.center().y - galley.size().y / 2.0);
+    ui.painter().galley(at, galley, color);
     response
 }
 
@@ -273,6 +289,13 @@ pub fn tabs(ui: &mut Ui, center: Pos2, labels: &[&str], selected: usize) -> Opti
     clicked
 }
 
+/// What happened on a card: `open` is the card itself, and `menu` is where to show its
+/// menu if the menu button was just clicked.
+pub struct CardResponse {
+    pub open: Response,
+    pub menu: Option<Pos2>,
+}
+
 /// A project card: an image on a quiet tile, with a name and a note below.
 pub fn card(
     ui: &mut Ui,
@@ -280,12 +303,13 @@ pub fn card(
     image: Option<(egui::TextureId, Vec2)>,
     name: &str,
     note: &str,
-) -> Response {
-    let (rect, response) = ui.allocate_exact_size(size + vec2(0.0, 46.0), Sense::click());
+    menu_open: bool,
+) -> CardResponse {
+    const MENU_BUTTON: f32 = 26.0;
+    let (rect, open) = ui.allocate_exact_size(size + vec2(0.0, 46.0), Sense::click());
     let tile = Rect::from_min_size(rect.min, size);
-    let t = ui
-        .ctx()
-        .animate_bool_with_time(response.id, response.hovered(), 0.1);
+    let hovered = ui.rect_contains_pointer(rect);
+    let t = ui.ctx().animate_bool_with_time(open.id, hovered, 0.1);
     ui.painter()
         .add(squircle(tile, RADIUS * 1.5, WASH.lerp_to_gamma(RAIL, t)));
     if let Some((id, image_size)) = image {
@@ -296,21 +320,63 @@ pub fn card(
         ui.painter().image(id, at, uv, Color32::WHITE);
     }
     let left = tile.left() + 2.0;
-    ui.painter().text(
-        pos2(left, tile.bottom() + 16.0),
-        Align2::LEFT_CENTER,
-        name,
-        medium(TEXT),
-        INK,
-    );
-    ui.painter().text(
-        pos2(left, tile.bottom() + 34.0),
-        Align2::LEFT_CENTER,
-        note,
-        regular(HEADING),
-        MUTED,
-    );
-    response
+    let name = one_line(ui, name, medium(TEXT), INK, size.x - 4.0);
+    ui.painter().galley(pos2(left, tile.bottom() + 8.0), name, INK);
+    let note = one_line(ui, note, regular(HEADING), MUTED, size.x - 4.0);
+    ui.painter().galley(pos2(left, tile.bottom() + 26.0), note, MUTED);
+
+    let mut menu = None;
+    if hovered || menu_open {
+        let top_right = tile.right_top() + vec2(-8.0 - MENU_BUTTON, 8.0);
+        let button = Rect::from_min_size(top_right, Vec2::splat(MENU_BUTTON));
+        let response = ui.interact(button, open.id.with("menu"), Sense::click());
+        ui.painter().add(squircle(button, RADIUS * 0.75, WHITE));
+        for dx in [-5.0, 0.0, 5.0] {
+            ui.painter()
+                .circle_filled(button.center() + vec2(dx, 0.0), 1.5, INK);
+        }
+        if response.clicked() {
+            menu = Some(button.right_bottom() + vec2(-150.0, 4.0));
+        }
+    }
+    CardResponse { open, menu }
+}
+
+pub enum MenuChoice {
+    Waiting,
+    Chosen,
+    Dismissed,
+}
+
+/// A small floating menu with one item.
+pub fn menu(ctx: &egui::Context, at: Pos2, item: &str) -> MenuChoice {
+    let size = vec2(150.0, ROW + 8.0);
+    let inner = egui::Area::new(egui::Id::unique("card menu"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(at)
+        .show(ctx, |ui| {
+            let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+            ui.painter().add(squircle(rect, RADIUS * 1.25, WHITE));
+            ui.painter()
+                .add(squircle_outline(rect, RADIUS * 1.25, Stroke::new(1.0, RAIL)));
+            let inset = rect.shrink(4.0);
+            let response = ui.interact(inset, ui.scope_id().with(item), Sense::click());
+            ui.painter()
+                .add(squircle(inset, RADIUS * 0.75, hover_fill(ui, &response, false)));
+            let text = inset.left_center() + vec2(8.0, 0.0);
+            ui.painter()
+                .text(text, Align2::LEFT_CENTER, item, regular(TEXT), INK);
+            (rect, response.clicked())
+        })
+        .inner;
+    let (rect, chosen) = inner;
+    let clicked_away =
+        ctx.input(|i| i.pointer.any_click() && i.pointer.interact_pos().is_some_and(|p| !rect.contains(p)));
+    match (chosen, clicked_away) {
+        (true, _) => MenuChoice::Chosen,
+        (_, true) => MenuChoice::Dismissed,
+        _ => MenuChoice::Waiting,
+    }
 }
 
 /// The card that starts something new.

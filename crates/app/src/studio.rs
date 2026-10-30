@@ -28,6 +28,8 @@ pub enum Nav {
     Bake(Project),
     /// Rebuild the layers, then go home.
     BakeHome(Project),
+    /// Move a painting's folder to the Trash.
+    Trash(PathBuf),
 }
 
 enum Screen {
@@ -222,6 +224,12 @@ impl Studio {
             Nav::Bake(project) => {
                 self.bake(ctx, Then::Light, project);
                 Ok(())
+            }
+            Nav::Trash(dir) => {
+                let trashed = crate::platform::move_to_trash(&dir)
+                    .with_context(|| format!("moving {} to the Trash", dir.display()));
+                self.screen = Screen::Home(Home::new(ctx, &self.root));
+                trashed
             }
             Nav::BakeHome(project) => {
                 self.bake(ctx, Then::Home, project);

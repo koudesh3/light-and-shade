@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 const SOURCE: &str = "source/original.png";
 const FLAT_NORMAL: &str = "layers/flat_normal.png";
-pub const THUMBNAIL: &str = "thumbnail.png";
+pub const THUMBNAIL: &str = "cover.png";
 const THUMBNAIL_SIDE: u32 = 560;
 /// Transparent margin around each layer, so filtering has room to fade out.
 const MARGIN: f32 = 3.0;
@@ -166,29 +166,52 @@ impl Project {
 
     /// What a card shows: the layers if there are any, otherwise the source image.
     pub fn thumbnail(&self) -> Result<RgbaImage> {
-        let scale = THUMBNAIL_SIDE as f32 / self.width.max(self.height) as f32;
-        let size = |n: u32| ((n as f32 * scale).round() as u32).max(1);
-        if self.layers.is_empty() {
+        let Some(bounds) = self.layer_bounds() else {
             let source = self
                 .source
                 .as_ref()
                 .context("this painting has nothing to show")?;
             let image = image::open(self.dir.join(source))?.into_rgba8();
+            let scale = THUMBNAIL_SIDE as f32 / self.width.max(self.height) as f32;
+            let (w, h) = (self.width as f32 * scale, self.height as f32 * scale);
             return Ok(imageops::resize(
                 &image,
-                size(self.width),
-                size(self.height),
+                w.max(1.0) as u32,
+                h.max(1.0) as u32,
                 FilterType::Triangle,
             ));
-        }
-        let mut canvas = RgbaImage::new(size(self.width), size(self.height));
+        };
+        // Frame the pieces, not the page they came from, so they fill the card.
+        let [left, top, right, bottom] = bounds;
+        let scale = THUMBNAIL_SIDE as f32 / (right - left).max(bottom - top).max(1.0);
+        let size = |n: f32| ((n * scale).round() as u32).max(1);
+        let mut canvas = RgbaImage::new(size(right - left), size(bottom - top));
         for layer in &self.layers {
             let image = image::open(self.dir.join(&layer.color))?.into_rgba8();
-            let piece = imageops::resize(&image, size(layer.w), size(layer.h), FilterType::Triangle);
-            let (x, y) = ((layer.x * scale).round() as i64, (layer.y * scale).round() as i64);
+            let piece = imageops::resize(
+                &image,
+                size(layer.w as f32),
+                size(layer.h as f32),
+                FilterType::Triangle,
+            );
+            let x = ((layer.x - left) * scale).round() as i64;
+            let y = ((layer.y - top) * scale).round() as i64;
             imageops::overlay(&mut canvas, &piece, x, y);
         }
         Ok(canvas)
+    }
+
+    /// The area the layers cover, as `[left, top, right, bottom]`.
+    fn layer_bounds(&self) -> Option<[f32; 4]> {
+        self.layers.iter().fold(None, |bounds, l| {
+            let [left, top, right, bottom] = bounds.unwrap_or([f32::MAX, f32::MAX, f32::MIN, f32::MIN]);
+            Some([
+                left.min(l.x),
+                top.min(l.y),
+                right.max(l.x + l.w as f32),
+                bottom.max(l.y + l.h as f32),
+            ])
+        })
     }
 
     pub fn write_thumbnail(&self) -> Result<()> {
@@ -328,6 +351,12 @@ mod tests {
         assert_eq!(pixels.get_pixel(18, 18)[3], 255);
         assert_eq!(pixels.get_pixel(0, 0)[3], 0);
         assert!(loaded.dir.join(THUMBNAIL).is_file());
+        let cover = image::open(loaded.dir.join(THUMBNAIL)).unwrap();
+        assert_eq!(
+            cover.width().max(cover.height()),
+            THUMBNAIL_SIDE,
+            "the cover frames the pieces"
+        );
 
         assert!(
             Project::create(&root, &image)

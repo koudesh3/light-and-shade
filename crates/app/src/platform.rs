@@ -12,6 +12,22 @@ pub enum Command {
     Orbit,
 }
 
+/// Move a file or folder to the system Trash, where it can be recovered.
+pub fn move_to_trash(path: &std::path::Path) -> Result<(), trash::Error> {
+    #[cfg(target_os = "macos")]
+    {
+        use trash::macos::{DeleteMethod, TrashContextExtMacos};
+        // Asking Finder instead would prompt for Automation permission.
+        let mut context = trash::TrashContext::default();
+        context.set_delete_method(DeleteMethod::NsFileManager);
+        context.delete(path)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        trash::delete(path)
+    }
+}
+
 #[cfg(target_os = "macos")]
 pub use mac::Menu;
 
