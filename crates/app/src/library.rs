@@ -1,5 +1,6 @@
 //! Finds painting projects on disk.
 
+use las_core::Project;
 use std::path::{Path, PathBuf};
 
 /// `LAS_PROJECTS`, else the nearest `projects/` folder above the working directory or the
@@ -17,14 +18,14 @@ pub fn root() -> Option<PathBuf> {
         .find(|dir| dir.is_dir())
 }
 
-/// Project folders directly inside `root`, by name.
-pub fn scan(root: &Path) -> Vec<PathBuf> {
-    let mut found: Vec<PathBuf> = std::fs::read_dir(root)
+/// Readable project folders directly inside `root`, with their names, sorted by folder.
+pub fn scan(root: &Path) -> Vec<(PathBuf, String)> {
+    let mut found: Vec<(PathBuf, String)> = std::fs::read_dir(root)
         .into_iter()
         .flatten()
         .flatten()
         .map(|entry| entry.path())
-        .filter(|path| path.join("project.json").is_file())
+        .filter_map(|path| Project::load(&path).ok().map(|p| (path, p.name)))
         .collect();
     found.sort();
     found

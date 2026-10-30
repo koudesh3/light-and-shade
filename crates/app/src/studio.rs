@@ -2,15 +2,13 @@
 //! the light on the right.
 
 use crate::platform::{Command, Menu};
-use crate::{ball::Ball, library, theme};
+use crate::{ball::Ball, design, library};
 use anyhow::{Context, Result, anyhow};
-use eframe::egui::{self, Color32, Key, Pos2, Rect, RichText, Sense, Slider, TextureId};
+use eframe::egui::{self, Color32, Key, Pos2, Rect, Sense, TextureId};
 use eframe::egui_wgpu::RenderState;
 use las_core::{Light, Project, View};
 use las_render::{Frame, Mode, Renderer, TARGET_FORMAT};
 use std::path::PathBuf;
-
-const TRAFFIC_LIGHTS: f32 = if cfg!(target_os = "macos") { 74.0 } else { 0.0 };
 
 /// Settings a scripted run applies, for capturing the window without any OS permissions.
 pub struct Scripted {
@@ -57,10 +55,9 @@ pub struct Studio {
     renderer: Renderer,
     target: Option<Target>,
     root: Option<PathBuf>,
-    library: Vec<PathBuf>,
+    library: Vec<(PathBuf, String)>,
     project: Project,
     visible: Vec<bool>,
-    selected: Option<usize>,
     light: Light,
     ambient: f32,
     strength: f32,
@@ -88,7 +85,7 @@ impl Studio {
         let first = library
             .first()
             .context("no projects found: set LAS_PROJECTS to a folder of paintings")?;
-        let project = Project::load(first)?;
+        let project = Project::load(&first.0)?;
         let mut renderer = Renderer::new(&gpu.device);
         renderer.load(&gpu.device, &gpu.queue, &project)?;
         let mut studio = Self {
@@ -99,7 +96,6 @@ impl Studio {
             root,
             library,
             project,
-            selected: None,
             light: Light {
                 x: -0.55,
                 y: 0.5,
@@ -139,7 +135,6 @@ impl Studio {
         match opened {
             Ok(project) => {
                 self.visible = vec![true; project.layers.len()];
-                self.selected = None;
                 self.view = View::default();
                 self.project = project;
                 self.error = None;
@@ -178,71 +173,53 @@ impl Studio {
     }
 
     fn toolbar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_centered(|ui| {
-            ui.add_space(TRAFFIC_LIGHTS);
-            ui.label(RichText::new(&self.project.name).strong());
-            ui.add_space(12.0);
-            for (mode, label, hint) in [
-                (Mode::Lit, "Lit", "1"),
-                (Mode::Normals, "Normals", "2"),
-                (Mode::Original, "Original", "3"),
-            ] {
-                ui.selectable_value(&mut self.mode, mode, label)
-                    .on_hover_text(hint);
+        const MODES: [Mode; 3] = [Mode::Lit, Mode::Normals, Mode::Original];
+        let rect = ui.max_rect();
+        let selected = MODES.iter().position(|m| *m == self.mode).unwrap_or(0);
+        if let Some(i) = design::tabs(ui, rect.center(), &["Lit", "Normals", "Original"], selected) {
+            self.mode = MODES[i];
+        }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if design::button(ui, &format!("{:.0}%", self.view.zoom * 100.0)).clicked() {
+                self.view = View::default();
             }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Fit").on_hover_text("F").clicked() {
-                    self.view = View::default();
-                }
-                ui.label(
-                    RichText::new(format!("{:.0}%", self.view.zoom * 100.0))
-                        .color(theme::MUTED)
-                        .monospace(),
-                );
-            });
         });
     }
 
     fn left_panel(&mut self, ui: &mut egui::Ui) {
-        theme::section(ui, "Library");
+        design::heading(ui, "Paintings");
         let mut open = None;
-        for dir in &self.library {
-            let name = dir
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            if ui.selectable_label(*dir == self.project.dir, name).clicked() && *dir != self.project.dir {
+        for (dir, name) in &self.library {
+            let current = *dir == self.project.dir;
+            if design::row(ui, name, current, design::INK).clicked() && !current {
                 open = Some(dir.clone());
             }
         }
-        if ui.button("Open folder…").clicked() {
+        if design::row(ui, "Open folder…", false, design::MUTED).clicked() {
             open = self.pick_folder();
         }
         if let Some(dir) = open {
             self.open(dir);
         }
         if let Some(e) = &self.error {
-            ui.colored_label(Color32::from_rgb(232, 120, 104), e);
+            ui.colored_label(Color32::from_rgb(190, 60, 40), e);
         }
-        ui.add_space(6.0);
-        ui.separator();
-        theme::section(ui, "Layers");
+        design::gap(ui);
+        design::heading(ui, "Layers");
         egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
             for i in (0..self.project.layers.len()).rev() {
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut self.visible[i], "");
-                    let selected = self.selected == Some(i);
-                    let label = format!("{:>2}  {}", self.project.layers[i].z, self.project.layers[i].name);
-                    if ui.selectable_label(selected, label).clicked() {
-                        self.selected = (!selected).then_some(i);
-                    }
-                });
+                let name = &self.project.layers[i].name;
+                if design::layer_row(ui, name, self.visible[i]).clicked() {
+                    self.visible[i] = !self.visible[i];
+                }
             }
         });
     }
 
     fn right_panel(&mut self, ui: &mut egui::Ui) {
-        theme::section(ui, "Light");
+        design::heading(ui, "Light");
+        ui.add_space(4.0);
         ui.vertical_centered(|ui| {
             if self
                 .ball
@@ -251,45 +228,16 @@ impl Studio {
                 self.orbit = false;
             }
         });
-        ui.add_space(4.0);
-        egui::Grid::new("light")
-            .num_columns(2)
-            .spacing([10.0, 6.0])
-            .show(ui, |ui| {
-                ui.label("Height");
-                ui.add(Slider::new(&mut self.light.height, 0.05..=1.0).fixed_decimals(2));
-                ui.end_row();
-                ui.label("Strength");
-                ui.add(Slider::new(&mut self.strength, 0.0..=2.0).fixed_decimals(2));
-                ui.end_row();
-                ui.label("Ambient");
-                ui.add(Slider::new(&mut self.ambient, 0.0..=1.0).fixed_decimals(2));
-                ui.end_row();
-                ui.label("Sheen");
-                ui.add(Slider::new(&mut self.sheen, 0.0..=1.0).fixed_decimals(2));
-                ui.end_row();
-            });
-        ui.add_space(4.0);
-        ui.checkbox(&mut self.orbit, "Orbit the light").on_hover_text("O");
-        ui.add_space(6.0);
-        ui.separator();
-        theme::section(ui, "Display");
-        ui.checkbox(&mut self.dark_paper, "Dark paper");
-        ui.checkbox(&mut self.linear, "Linear light")
-            .on_hover_text("Shade in linear colour. It is more physically correct, and looks brighter.");
-    }
-
-    fn status_bar(&self, ui: &mut egui::Ui) {
-        let info = self.gpu.adapter.get_info();
-        let shown = self.visible.iter().filter(|v| **v).count();
-        ui.horizontal_centered(|ui| {
-            let small = |t: String| RichText::new(t).small().color(theme::MUTED);
-            ui.label(small(format!("{} × {}", self.project.width, self.project.height)));
-            ui.label(small(format!("{shown} of {} layers", self.project.layers.len())));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(small(format!("{} · {:?}", info.name, info.backend)));
-            });
-        });
+        ui.add_space(8.0);
+        design::slider(ui, "Height", &mut self.light.height, 0.05..=1.0);
+        design::slider(ui, "Strength", &mut self.strength, 0.0..=2.0);
+        design::slider(ui, "Ambient", &mut self.ambient, 0.0..=1.0);
+        design::slider(ui, "Sheen", &mut self.sheen, 0.0..=1.0);
+        design::toggle(ui, "Orbit", &mut self.orbit);
+        design::gap(ui);
+        design::heading(ui, "Display");
+        design::toggle(ui, "Dark paper", &mut self.dark_paper);
+        design::toggle(ui, "Linear light", &mut self.linear);
     }
 
     fn viewport(&mut self, ui: &mut egui::Ui) {
@@ -486,31 +434,30 @@ impl eframe::App for Studio {
             self.light.y = a.sin() * 0.8;
             ctx.request_repaint();
         }
-        let edge = |fill, x, y| {
+        let page = |x, y| {
             egui::Frame::new()
-                .fill(fill)
+                .fill(design::WHITE)
                 .inner_margin(egui::Margin::symmetric(x, y))
         };
         egui::Panel::top("toolbar")
-            .exact_size(38.0)
-            .frame(edge(theme::PANEL, 10, 0))
+            .exact_size(46.0)
+            .show_separator_line(false)
+            .frame(page(design::PAGE, 0))
             .show(ui, |ui| self.toolbar(ui));
-        egui::Panel::bottom("status")
-            .exact_size(22.0)
-            .frame(edge(theme::PANEL, 10, 0))
-            .show(ui, |ui| self.status_bar(ui));
-        egui::Panel::left("library")
-            .default_size(210.0)
-            .size_range(170.0..=340.0)
-            .frame(edge(theme::PANEL, 10, 8))
+        egui::Panel::left("sidebar")
+            .exact_size(216.0)
+            .resizable(false)
+            .show_separator_line(false)
+            .frame(page(design::PAGE, 4))
             .show(ui, |ui| self.left_panel(ui));
         egui::Panel::right("inspector")
-            .default_size(260.0)
-            .size_range(230.0..=360.0)
-            .frame(edge(theme::PANEL, 12, 8))
+            .exact_size(244.0)
+            .resizable(false)
+            .show_separator_line(false)
+            .frame(page(design::PAGE, 4))
             .show(ui, |ui| self.right_panel(ui));
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(theme::WINDOW))
+            .frame(egui::Frame::new().fill(design::WHITE))
             .show(ui, |ui| self.viewport(ui));
         self.capture(&ctx);
     }

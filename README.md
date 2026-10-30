@@ -19,7 +19,8 @@ The Rust version is pinned in `rust-toolchain.toml`. The app reads paintings fro
 from the nearest `projects/` folder.
 
 Drag the painting or the ball to move the light. Scroll or pinch to zoom, hold Space and drag to pan,
-and double-click or press F to fit. Keys 1, 2 and 3 switch views, and O orbits the light.
+and double-click, press F or click the zoom level to fit. Click a layer to hide it. Keys 1, 2 and 3 switch
+views, and O orbits the light.
 
 ## Layout
 
@@ -27,7 +28,7 @@ and double-click or press F to fit. Keys 1, 2 and 3 switch views, and O orbits t
 |---|---|
 | `crates/core` | Project format and view maths. No GPU or UI. |
 | `crates/render` | The `wgpu` renderer and its WGSL shader. |
-| `crates/app` | The `egui` studio. OS-specific code stays in `platform.rs`. |
+| `crates/app` | The `egui` studio. Every control comes from `design.rs`; OS-specific code stays in `platform.rs`. |
 
 ## Capturing the app
 

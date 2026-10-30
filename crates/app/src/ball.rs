@@ -21,7 +21,7 @@ impl Ball {
         strength: f32,
         sheen: f32,
     ) -> bool {
-        let (rect, response) = ui.allocate_exact_size(Vec2::splat(112.0), Sense::click_and_drag());
+        let (rect, response) = ui.allocate_exact_size(Vec2::splat(96.0), Sense::click_and_drag());
         let mut changed = false;
         if let Some(pos) = response.interact_pointer_pos() {
             let v = (pos - rect.center()) / (rect.width() / 2.0);
@@ -80,13 +80,8 @@ fn shade(size: usize, l: [f32; 3], ambient: f32, strength: f32, sheen: f32) -> C
             let nz = (1.0 - r2).max(0.0).sqrt();
             let dif = (nx * l[0] + ny * l[1] + nz * l[2]).max(0.0);
             let spec = (nx * h[0] + ny * h[1] + nz * h[2]).max(0.0).powf(28.0) * sheen;
-            let v = ((ambient + strength * dif) * 170.0 + spec * 255.0).min(255.0) * edge;
-            pixels[y * size + x] = Color32::from_rgba_premultiplied(
-                (v * 0.92) as u8,
-                v as u8,
-                (v * 0.9) as u8,
-                (edge * 255.0) as u8,
-            );
+            let v = (((ambient + strength * dif) * 170.0 + spec * 255.0).min(255.0) * edge) as u8;
+            pixels[y * size + x] = Color32::from_rgba_premultiplied(v, v, v, (edge * 255.0) as u8);
         }
     }
     ColorImage::new([size, size], pixels)

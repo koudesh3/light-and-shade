@@ -1,10 +1,10 @@
 //! The Light and Shade studio.
 
 mod ball;
+mod design;
 mod library;
 mod platform;
 mod studio;
-mod theme;
 
 use eframe::egui;
 use studio::{Scripted, Studio};
@@ -25,7 +25,7 @@ fn main() -> eframe::Result {
         "Light and Shade",
         options,
         Box::new(|cc| {
-            theme::apply(&cc.egui_ctx);
+            design::apply(&cc.egui_ctx);
             Ok(Box::new(Studio::new(cc, Scripted::from_env())?))
         }),
     )
