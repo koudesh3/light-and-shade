@@ -33,8 +33,16 @@ pub fn slug(name: &str) -> String {
         .chars()
         .map(|c| if c.is_alphanumeric() { c } else { '-' })
         .collect();
-    let joined = kept.split('-').filter(|p| !p.is_empty()).collect::<Vec<_>>().join("-");
-    if joined.is_empty() { "untitled".into() } else { joined }
+    let joined = kept
+        .split('-')
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if joined.is_empty() {
+        "untitled".into()
+    } else {
+        joined
+    }
 }
 
 fn unused_folder(root: &Path, base: &str) -> PathBuf {
@@ -50,7 +58,11 @@ fn unused_folder(root: &Path, base: &str) -> PathBuf {
 
 /// Decode upright: phones store photos sideways and record the turn in metadata.
 fn decode_upright(path: &Path) -> Result<RgbaImage> {
-    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_lowercase();
+    let extension = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default()
+        .to_lowercase();
     if matches!(extension.as_str(), "heic" | "heif") {
         bail!("HEIC photos aren't supported yet. Export it as JPEG or PNG and drop that instead.");
     }
@@ -67,8 +79,11 @@ fn decode_upright(path: &Path) -> Result<RgbaImage> {
 
 fn save_png(image: &RgbaImage, path: &Path) -> Result<()> {
     let file = File::create(path).with_context(|| format!("creating {}", path.display()))?;
-    let encoder = PngEncoder::new_with_quality(BufWriter::new(file), CompressionType::Fast, PngFilter::Adaptive);
-    image.write_with_encoder(encoder).with_context(|| format!("writing {}", path.display()))
+    let encoder =
+        PngEncoder::new_with_quality(BufWriter::new(file), CompressionType::Fast, PngFilter::Adaptive);
+    image
+        .write_with_encoder(encoder)
+        .with_context(|| format!("writing {}", path.display()))
 }
 
 impl Project {
@@ -78,8 +93,7 @@ impl Project {
         let stem = image.file_stem().and_then(|s| s.to_str()).unwrap_or_default();
         let name = painting_name(stem);
         let dir = unused_folder(root, &slug(&name));
-        std::fs::create_dir_all(dir.join("source"))
-            .with_context(|| format!("creating {}", dir.display()))?;
+        std::fs::create_dir_all(dir.join("source")).with_context(|| format!("creating {}", dir.display()))?;
         save_png(&source, &dir.join(SOURCE))?;
         let project = Project {
             name,
@@ -97,7 +111,10 @@ impl Project {
 
     /// Rebuild every layer from the cuts. The first cut goes at the back.
     pub fn bake(&mut self) -> Result<()> {
-        let source_path = self.source.as_ref().context("this painting has no source image to cut")?;
+        let source_path = self
+            .source
+            .as_ref()
+            .context("this painting has no source image to cut")?;
         let source = image::open(self.dir.join(source_path))
             .with_context(|| format!("reading {}", source_path.display()))?
             .into_rgba8();
@@ -106,8 +123,7 @@ impl Project {
             std::fs::remove_dir_all(&layers_dir)?;
         }
         std::fs::create_dir_all(&layers_dir)?;
-        RgbaImage::from_pixel(2, 2, image::Rgba([128, 128, 255, 255]))
-            .save(self.dir.join(FLAT_NORMAL))?;
+        RgbaImage::from_pixel(2, 2, image::Rgba([128, 128, 255, 255])).save(self.dir.join(FLAT_NORMAL))?;
 
         let mut layers = Vec::with_capacity(self.cuts.len());
         for (z, cut) in self.cuts.iter().enumerate() {
@@ -135,9 +151,17 @@ impl Project {
         let scale = THUMBNAIL_SIDE as f32 / self.width.max(self.height) as f32;
         let size = |n: u32| ((n as f32 * scale).round() as u32).max(1);
         if self.layers.is_empty() {
-            let source = self.source.as_ref().context("this painting has nothing to show")?;
+            let source = self
+                .source
+                .as_ref()
+                .context("this painting has nothing to show")?;
             let image = image::open(self.dir.join(source))?.into_rgba8();
-            return Ok(imageops::resize(&image, size(self.width), size(self.height), FilterType::Triangle));
+            return Ok(imageops::resize(
+                &image,
+                size(self.width),
+                size(self.height),
+                FilterType::Triangle,
+            ));
         }
         let mut canvas = RgbaImage::new(size(self.width), size(self.height));
         for layer in &self.layers {
@@ -193,8 +217,8 @@ pub fn coverage(points: &[[f32; 2]], left: u32, top: u32, width: u32, height: u3
                 }
             }
             crossings.sort_by(f32::total_cmp);
-            for span in crossings.chunks_exact(2) {
-                let (a, b) = (span[0] - left as f32, span[1] - left as f32);
+            for [a, b] in crossings.as_chunks::<2>().0 {
+                let (a, b) = (a - left as f32, b - left as f32);
                 let first = a.floor().max(0.0) as usize;
                 let last = (b.ceil().max(0.0) as usize).min(row.len());
                 for (x, value) in row.iter_mut().enumerate().take(last).skip(first) {
@@ -202,7 +226,10 @@ pub fn coverage(points: &[[f32; 2]], left: u32, top: u32, width: u32, height: u3
                 }
             }
         }
-        mask.extend(row.iter().map(|v| (v / ROWS as f32 * 255.0).round().min(255.0) as u8));
+        mask.extend(
+            row.iter()
+                .map(|v| (v / ROWS as f32 * 255.0).round().min(255.0) as u8),
+        );
     }
     mask
 }
@@ -212,7 +239,10 @@ mod tests {
     use super::*;
 
     fn area(points: &[[f32; 2]], w: u32, h: u32) -> f32 {
-        coverage(points, 0, 0, w, h).iter().map(|a| *a as f32 / 255.0).sum()
+        coverage(points, 0, 0, w, h)
+            .iter()
+            .map(|a| *a as f32 / 255.0)
+            .sum()
     }
 
     #[test]
@@ -245,14 +275,22 @@ mod tests {
         let root = std::env::temp_dir().join(format!("las-bake-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let image = root.join("little_fern.png");
-        RgbaImage::from_pixel(100, 80, image::Rgba([20, 120, 40, 255])).save(&image).unwrap();
+        RgbaImage::from_pixel(100, 80, image::Rgba([20, 120, 40, 255]))
+            .save(&image)
+            .unwrap();
 
         let mut project = Project::create(&root, &image).unwrap();
         assert_eq!(project.name, "Little fern");
         assert!(project.dir.ends_with("little-fern"));
         project.cuts = vec![
-            Cut { name: "Back".into(), points: vec![[10.0, 10.0], [40.0, 10.0], [40.0, 40.0], [10.0, 40.0]] },
-            Cut { name: "Front".into(), points: vec![[90.0, 70.0], [99.0, 70.0], [99.0, 79.0]] },
+            Cut {
+                name: "Back".into(),
+                points: vec![[10.0, 10.0], [40.0, 10.0], [40.0, 40.0], [10.0, 40.0]],
+            },
+            Cut {
+                name: "Front".into(),
+                points: vec![[90.0, 70.0], [99.0, 70.0], [99.0, 79.0]],
+            },
         ];
         project.bake().unwrap();
 
@@ -266,7 +304,12 @@ mod tests {
         assert_eq!(pixels.get_pixel(0, 0)[3], 0);
         assert!(loaded.dir.join(THUMBNAIL).is_file());
 
-        assert!(Project::create(&root, &image).unwrap().dir.ends_with("little-fern-2"));
+        assert!(
+            Project::create(&root, &image)
+                .unwrap()
+                .dir
+                .ends_with("little-fern-2")
+        );
         std::fs::remove_dir_all(&root).unwrap();
     }
 

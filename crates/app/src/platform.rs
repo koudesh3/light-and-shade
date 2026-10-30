@@ -4,7 +4,7 @@
 /// Something the OS menu bar asked for.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Command {
-    Open,
+    New,
     Fit,
     Lit,
     Normals,
@@ -48,7 +48,7 @@ mod mac {
                 items.push((item.clone(), command));
                 item
             };
-            let open = item("Open Folder…", Some("Cmd+O"), Command::Open);
+            let new = item("New Painting…", Some("Cmd+N"), Command::New);
             let lit = item("Lit", Some("Cmd+1"), Command::Lit);
             let normals = item("Normals", Some("Cmd+2"), Command::Normals);
             let original = item("Original", Some("Cmd+3"), Command::Original);
@@ -68,7 +68,7 @@ mod mac {
                     &PredefinedMenuItem::quit(None),
                 ],
             );
-            let file = Submenu::with_items("File", true, &[&open]);
+            let file = Submenu::with_items("File", true, &[&new]);
             let view = Submenu::with_items(
                 "View",
                 true,

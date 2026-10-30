@@ -1,8 +1,11 @@
 //! The Light and Shade studio.
 
 mod ball;
+mod cut;
 mod design;
+mod home;
 mod library;
+mod light;
 mod platform;
 mod studio;
 
@@ -18,7 +21,8 @@ fn main() -> eframe::Result {
             .with_min_inner_size([900.0, 560.0])
             .with_fullsize_content_view(true)
             .with_titlebar_shown(false)
-            .with_title_shown(false),
+            .with_title_shown(false)
+            .with_drag_and_drop(true),
         ..Default::default()
     };
     eframe::run_native(

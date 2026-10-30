@@ -1,13 +1,13 @@
 #!/bin/sh
-# Build target/Light and Shade.app with the bundled paintings.
+# Build target/Light and Shade.app with the example painting.
 set -eu
 cd "$(dirname "$0")/.."
 cargo build --release -p light-and-shade
 app="target/Light and Shade.app"
 rm -rf "$app"
-mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/projects"
 cp target/release/light-and-shade "$app/Contents/MacOS/"
-cp -R projects "$app/Contents/Resources/projects"
+cp -R projects/pothos "$app/Contents/Resources/projects/"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

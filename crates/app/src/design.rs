@@ -15,6 +15,8 @@ pub const MUTED: Color32 = Color32::from_rgb(138, 138, 134);
 pub const WASH: Color32 = Color32::from_rgb(242, 242, 240);
 pub const RAIL: Color32 = Color32::from_rgb(228, 228, 225);
 
+/// Room for the window buttons, which float over the top bar on macOS.
+pub const TRAFFIC_LIGHTS: f32 = if cfg!(target_os = "macos") { 74.0 } else { 0.0 };
 pub const RADIUS: f32 = 8.0;
 pub const ROW: f32 = 28.0;
 pub const GAP: f32 = 6.0;
@@ -75,6 +77,15 @@ pub fn apply(ctx: &egui::Context) {
 /// A superellipse-cornered rectangle. Unlike a circular corner, its curve eases
 /// into the straight edges, which is what makes it read as soft rather than round.
 pub fn squircle(rect: Rect, radius: f32, fill: Color32) -> Shape {
+    Shape::convex_polygon(squircle_points(rect, radius), fill, Stroke::NONE)
+}
+
+/// A squircle's outline.
+pub fn squircle_outline(rect: Rect, radius: f32, stroke: Stroke) -> Shape {
+    Shape::closed_line(squircle_points(rect, radius), stroke)
+}
+
+fn squircle_points(rect: Rect, radius: f32) -> Vec<Pos2> {
     const STEPS: usize = 12;
     const POWER: f32 = 2.0 / 4.5;
     // A superellipse looks tighter than a circle of the same size, so reach further along the edges.
@@ -95,7 +106,56 @@ pub fn squircle(rect: Rect, radius: f32, fill: Color32) -> Shape {
             points.push(center + vec2(sx * r * x, sy * r * y));
         }
     }
-    Shape::convex_polygon(points, fill, Stroke::NONE)
+    points
+}
+
+fn surface(x: i8, y: i8) -> egui::Frame {
+    egui::Frame::new()
+        .fill(WHITE)
+        .inner_margin(egui::Margin::symmetric(x, y))
+}
+
+/// The bar along the top of a screen.
+pub fn top_bar<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> R {
+    egui::Panel::top("top bar")
+        .exact_size(46.0)
+        .show_separator_line(false)
+        .frame(surface(PAGE, 0))
+        .show(ui, contents)
+        .inner
+}
+
+/// A fixed column beside the canvas.
+pub fn side_panel<R>(panel: egui::Panel, width: f32, ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> R {
+    panel
+        .exact_size(width)
+        .resizable(false)
+        .show_separator_line(false)
+        .frame(surface(PAGE, 4))
+        .show(ui, contents)
+        .inner
+}
+
+/// A page title.
+pub fn title(ui: &mut Ui, text: &str) {
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 36.0), Sense::hover());
+    ui.painter()
+        .text(rect.left_center(), Align2::LEFT_CENTER, text, medium(26.0), INK);
+}
+
+/// A short message floating at the bottom of the window.
+pub fn toast(ctx: &egui::Context, text: &str) {
+    egui::Area::new(egui::Id::unique("toast"))
+        .order(egui::Order::Foreground)
+        .anchor(Align2::CENTER_BOTTOM, vec2(0.0, -24.0))
+        .interactable(false)
+        .show(ctx, |ui| {
+            let galley = ui.fonts_mut(|f| f.layout(text.to_owned(), regular(TEXT), WHITE, 560.0));
+            let size = galley.size() + vec2(28.0, 18.0);
+            let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+            ui.painter().add(squircle(rect, RADIUS * 1.25, INK));
+            ui.painter().galley(rect.min + vec2(14.0, 9.0), galley, WHITE);
+        });
 }
 
 /// A quiet label above a group of controls.
@@ -167,6 +227,24 @@ pub fn button(ui: &mut Ui, text: &str) -> Response {
     pill(ui, rect, text, false)
 }
 
+/// The one black button on a screen.
+pub fn primary_button(ui: &mut Ui, text: &str) -> Response {
+    let size = vec2(width_of(ui, text, medium(TEXT)) + 28.0, ROW);
+    let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+    let response = ui.interact(rect, ui.scope_id().with(text), Sense::click());
+    let t = ui
+        .ctx()
+        .animate_bool_with_time(response.id, response.hovered(), 0.1);
+    ui.painter().add(squircle(
+        rect,
+        RADIUS,
+        INK.lerp_to_gamma(Color32::from_gray(60), t),
+    ));
+    ui.painter()
+        .text(rect.center(), Align2::CENTER_CENTER, text, medium(TEXT), WHITE);
+    response
+}
+
 /// One-of-many tabs, centred on `center`. Returns the index that was clicked.
 pub fn tabs(ui: &mut Ui, center: Pos2, labels: &[&str], selected: usize) -> Option<usize> {
     let widths: Vec<f32> = labels
@@ -184,6 +262,103 @@ pub fn tabs(ui: &mut Ui, center: Pos2, labels: &[&str], selected: usize) -> Opti
         x += width + GAP;
     }
     clicked
+}
+
+/// A project card: an image on a quiet tile, with a name and a note below.
+pub fn card(
+    ui: &mut Ui,
+    size: Vec2,
+    image: Option<(egui::TextureId, Vec2)>,
+    name: &str,
+    note: &str,
+) -> Response {
+    let (rect, response) = ui.allocate_exact_size(size + vec2(0.0, 46.0), Sense::click());
+    let tile = Rect::from_min_size(rect.min, size);
+    let t = ui
+        .ctx()
+        .animate_bool_with_time(response.id, response.hovered(), 0.1);
+    ui.painter()
+        .add(squircle(tile, RADIUS * 1.5, WASH.lerp_to_gamma(RAIL, t)));
+    if let Some((id, image_size)) = image {
+        let room = tile.shrink(14.0).size();
+        let scale = (room.x / image_size.x).min(room.y / image_size.y);
+        let at = Rect::from_center_size(tile.center(), image_size * scale);
+        let uv = Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0));
+        ui.painter().image(id, at, uv, Color32::WHITE);
+    }
+    let left = tile.left() + 2.0;
+    ui.painter().text(
+        pos2(left, tile.bottom() + 16.0),
+        Align2::LEFT_CENTER,
+        name,
+        medium(TEXT),
+        INK,
+    );
+    ui.painter().text(
+        pos2(left, tile.bottom() + 34.0),
+        Align2::LEFT_CENTER,
+        note,
+        regular(HEADING),
+        MUTED,
+    );
+    response
+}
+
+/// The card that starts something new.
+pub fn new_card(ui: &mut Ui, size: Vec2, name: &str, note: &str) -> Response {
+    let (rect, response) = ui.allocate_exact_size(size + vec2(0.0, 46.0), Sense::click());
+    let tile = Rect::from_min_size(rect.min, size);
+    let t = ui
+        .ctx()
+        .animate_bool_with_time(response.id, response.hovered(), 0.1);
+    ui.painter().add(squircle_outline(
+        tile.shrink(0.5),
+        RADIUS * 1.5,
+        Stroke::new(1.0, RAIL.lerp_to_gamma(INK, t)),
+    ));
+    ui.painter().text(
+        tile.center(),
+        Align2::CENTER_CENTER,
+        "+",
+        regular(28.0),
+        RAIL.lerp_to_gamma(INK, t.max(0.5)),
+    );
+    let left = tile.left() + 2.0;
+    ui.painter().text(
+        pos2(left, tile.bottom() + 16.0),
+        Align2::LEFT_CENTER,
+        name,
+        medium(TEXT),
+        INK,
+    );
+    ui.painter().text(
+        pos2(left, tile.bottom() + 34.0),
+        Align2::LEFT_CENTER,
+        note,
+        regular(HEADING),
+        MUTED,
+    );
+    response
+}
+
+/// Fills the window while a file is being dragged over it.
+pub fn drop_veil(ctx: &egui::Context, text: &str) {
+    egui::Area::new(egui::Id::unique("drop veil"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(Pos2::ZERO)
+        .interactable(false)
+        .show(ctx, |ui| {
+            let window = ctx.content_rect();
+            ui.painter()
+                .rect_filled(window, 0.0, Color32::from_white_alpha(235));
+            ui.painter().add(squircle_outline(
+                window.shrink(16.0),
+                RADIUS * 2.0,
+                Stroke::new(1.5, INK),
+            ));
+            ui.painter()
+                .text(window.center(), Align2::CENTER_CENTER, text, medium(16.0), INK);
+        });
 }
 
 /// A labelled slider: name and value above a hairline rail with a black knob.
