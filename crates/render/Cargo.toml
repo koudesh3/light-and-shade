@@ -1,0 +1,15 @@
+[package]
+name = "las-render"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+bytemuck.workspace = true
+las-core.workspace = true
+wgpu.workspace = true
+
+[dev-dependencies]
+image.workspace = true
+pollster.workspace = true
