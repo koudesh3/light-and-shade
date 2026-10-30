@@ -17,6 +17,10 @@ pub struct Scripted {
     mode: Option<Mode>,
     zoom: Option<f32>,
     light_x: Option<f32>,
+    /// Press at the first point, drag to the second, release; in window points.
+    drag: Option<[f32; 4]>,
+    /// Scroll over the middle of the window.
+    scroll: Option<f32>,
 }
 
 impl Scripted {
@@ -32,6 +36,11 @@ impl Scripted {
             }),
             zoom: var("LAS_ZOOM").and_then(|z| z.parse().ok()),
             light_x: var("LAS_LIGHT_X").and_then(|x| x.parse().ok()),
+            drag: var("LAS_DRAG").and_then(|d| {
+                let v: Vec<f32> = d.split(',').filter_map(|n| n.parse().ok()).collect();
+                v.try_into().ok()
+            }),
+            scroll: var("LAS_SCROLL").and_then(|s| s.parse().ok()),
         }
     }
 }
@@ -345,7 +354,7 @@ impl Studio {
         self.frames += 1;
         let Some(path) = self.scripted.shot.clone() else { return };
         ctx.request_repaint();
-        if self.frames == 8 {
+        if self.frames == 30 {
             let callback = egui::ScreenshotCallback::new(move |image| {
                 let [w, h] = image.size;
                 let rgba: Vec<u8> = image.pixels.iter().flat_map(|c| c.to_srgba_unmultiplied()).collect();
@@ -363,6 +372,37 @@ impl Studio {
 }
 
 impl eframe::App for Studio {
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, input: &mut egui::RawInput) {
+        use egui::{Event, PointerButton};
+        let button = |pos, pressed| Event::PointerButton {
+            pos,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        if let Some([x0, y0, x1, y1]) = self.scripted.drag {
+            let (from, to) = (Pos2::new(x0, y0), Pos2::new(x1, y1));
+            match self.frames {
+                2 => input.events.push(Event::PointerMoved(from)),
+                3 => input.events.push(button(from, true)),
+                4 => input.events.push(Event::PointerMoved(to)),
+                5 => input.events.push(button(to, false)),
+                _ => {}
+            }
+        }
+        if let (Some(lines), 3) = (self.scripted.scroll, self.frames) {
+            let middle = input.screen_rect.map_or(Pos2::new(600.0, 400.0), |r| r.center());
+            input.events.push(Event::PointerMoved(middle));
+            input.events.push(Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Line,
+                delta: egui::vec2(0.0, lines),
+                phase: egui::TouchPhase::Move,
+                source: egui::MouseWheelSource::Wheel,
+                modifiers: Default::default(),
+            });
+        }
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.shortcuts(&ctx);

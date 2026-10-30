@@ -47,5 +47,8 @@ fn to_srgb(c: vec3f) -> vec3f {
   } else if (g.p.w < 1.5) {
     col = nr;
   }
-  return vec4f(clamp(col, vec3f(0.0), vec3f(1.0)) * c.a, c.a);
+  // Neighbouring layers both fade out along a shared edge. Tightening the fade stops
+  // their two half-covered pixels from letting the paper through as a hairline.
+  let a = min(c.a * 2.0, 1.0);
+  return vec4f(clamp(col, vec3f(0.0), vec3f(1.0)) * a, a);
 }
