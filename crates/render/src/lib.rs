@@ -24,7 +24,7 @@ pub struct Frame<'a> {
     pub sheen: f32,
     pub mode: Mode,
     pub linear: bool,
-    /// How strongly the normals show over the painting in `Mode::Normals`, from 0 to 1.
+    /// How strongly the normals show over the lit painting in `Mode::Normals`, from 0 to 1.
     pub normal_opacity: f32,
     pub background: [f64; 3],
     /// Per layer, back to front. Layers past the end are drawn.

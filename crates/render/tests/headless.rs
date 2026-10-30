@@ -18,6 +18,7 @@ fn draw(
     p: &Project,
     light: Light,
     mode: Mode,
+    normal_opacity: f32,
 ) -> Vec<u8> {
     let size = wgpu::Extent3d {
         width: SIZE,
@@ -50,7 +51,7 @@ fn draw(
         sheen: 0.08,
         mode,
         linear: false,
-        normal_opacity: 1.0,
+        normal_opacity,
         background: [1.0, 1.0, 1.0],
         visible: &[],
     };
@@ -96,6 +97,7 @@ fn lighting_follows_the_light() {
             height: 0.6,
         },
         Mode::Lit,
+        0.0,
     );
     let right = draw(
         &device,
@@ -108,6 +110,7 @@ fn lighting_follows_the_light() {
             height: 0.6,
         },
         Mode::Lit,
+        0.0,
     );
     let painted = |px: &[u8]| {
         px.chunks(4)
@@ -128,6 +131,37 @@ fn lighting_follows_the_light() {
         "moving the light should reshade the leaves"
     );
 
+    let left = draw(
+        &device,
+        &queue,
+        &r,
+        &p,
+        Light {
+            x: -1.0,
+            y: 0.3,
+            height: 0.6,
+        },
+        Mode::Normals,
+        0.5,
+    );
+    let right = draw(
+        &device,
+        &queue,
+        &r,
+        &p,
+        Light {
+            x: 1.0,
+            y: 0.3,
+            height: 0.6,
+        },
+        Mode::Normals,
+        0.5,
+    );
+    assert_ne!(
+        left, right,
+        "the light should still act through the normals overlay"
+    );
+
     if let Ok(dir) = std::env::var("LAS_STILLS") {
         for (name, mode) in [
             ("lit", Mode::Lit),
@@ -145,6 +179,7 @@ fn lighting_follows_the_light() {
                     height: 0.55,
                 },
                 mode,
+                1.0,
             );
             image::save_buffer(
                 format!("{dir}/{name}.png"),

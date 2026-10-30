@@ -186,9 +186,6 @@ impl LightRoom {
             }
         });
         ui.add_space(8.0);
-        if self.painter.is_some() {
-            return;
-        }
         design::slider(ui, "Height", &mut self.light.height, 0.05..=1.0);
         design::slider(ui, "Strength", &mut self.strength, 0.0..=2.0);
         design::slider(ui, "Ambient", &mut self.ambient, 0.0..=1.0);
