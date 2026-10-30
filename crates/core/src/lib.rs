@@ -9,6 +9,9 @@ use std::path::{Path, PathBuf};
 
 pub use bake::{THUMBNAIL, coverage, painting_name, slug};
 
+/// Below this many pixels on the longest side, an image looks soft at full canvas size.
+const LOW_RESOLUTION: u32 = 1600;
+
 /// A piece traced out of the source image, as a closed polygon in source pixels.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Cut {
@@ -63,6 +66,11 @@ impl Project {
         std::fs::write(&temp, serde_json::to_string_pretty(self)? + "\n")
             .with_context(|| format!("writing {}", temp.display()))?;
         std::fs::rename(&temp, &path).with_context(|| format!("replacing {}", path.display()))
+    }
+
+    /// Whether the source is too small to stay sharp on a large canvas.
+    pub fn is_low_resolution(&self) -> bool {
+        self.is_cuttable() && self.width.max(self.height) < LOW_RESOLUTION
     }
 
     /// Whether this painting has a source image to cut from.
@@ -250,6 +258,16 @@ mod tests {
     fn projects_without_cuts_still_load() {
         let p = Project::load(concat!(env!("CARGO_MANIFEST_DIR"), "/../../projects/pothos")).unwrap();
         assert!(p.cuts.is_empty() && !p.is_cuttable());
+    }
+
+    #[test]
+    fn small_sources_are_flagged() {
+        let mut p = Project::load(concat!(env!("CARGO_MANIFEST_DIR"), "/../../projects/pothos")).unwrap();
+        p.source = Some("source/original.png".into());
+        (p.width, p.height) = (768, 1024);
+        assert!(p.is_low_resolution());
+        (p.width, p.height) = (3024, 4032);
+        assert!(!p.is_low_resolution());
     }
 
     #[test]

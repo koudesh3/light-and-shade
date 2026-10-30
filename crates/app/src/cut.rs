@@ -351,8 +351,15 @@ impl CutBoard {
             line(points, false, 1.5);
             dot(to_screen(self.draft[0]), 5.0);
         }
+        let low_resolution = format!(
+            "This image is only {} × {}, so it will look soft. Dragging from Photos can give a small \
+             preview: export the photo, then drop that file instead.",
+            self.project.width, self.project.height
+        );
         let hint = if !self.draft.is_empty() {
             Some("Click the first point or press Return to close. Esc to cancel.")
+        } else if self.project.cuts.is_empty() && self.project.is_low_resolution() {
+            Some(low_resolution.as_str())
         } else if self.project.cuts.is_empty() {
             Some("Click around a piece, or drag to draw it.")
         } else {

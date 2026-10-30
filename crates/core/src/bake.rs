@@ -16,8 +16,18 @@ const THUMBNAIL_SIDE: u32 = 560;
 /// Transparent margin around each layer, so filtering has room to fade out.
 const MARGIN: f32 = 3.0;
 
+/// Photos names the previews it hands out after a UUID, which means nothing to a person.
+fn is_generated_name(stem: &str) -> bool {
+    let mut parts = stem.split('-');
+    let first = parts.next().unwrap_or_default();
+    first.len() == 8 && first.chars().all(|c| c.is_ascii_hexdigit()) && parts.count() >= 4
+}
+
 /// A readable painting name from a file stem: `my_pothos-2` becomes `My pothos 2`.
 pub fn painting_name(stem: &str) -> String {
+    if is_generated_name(stem) {
+        return "Untitled".into();
+    }
     let spaced = stem.replace(['_', '-'], " ");
     let mut chars = spaced.trim().chars();
     match chars.next() {
@@ -266,6 +276,11 @@ mod tests {
     fn names_and_slugs_are_tidy() {
         assert_eq!(painting_name("my_pothos-2"), "My pothos 2");
         assert_eq!(painting_name(""), "Untitled");
+        assert_eq!(
+            painting_name("522387ad-d1a3-448b-9584-28369006a1b3-1-105-c"),
+            "Untitled"
+        );
+        assert_eq!(painting_name("deadbeef-study"), "Deadbeef study");
         assert_eq!(slug("My pothos: 2!"), "my-pothos-2");
         assert_eq!(slug("!!"), "untitled");
     }
