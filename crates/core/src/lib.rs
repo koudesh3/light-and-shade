@@ -1,11 +1,22 @@
 //! Project format and pure scene maths. No GPU and no UI in here.
 
+mod bake;
+
 use anyhow::{Context, Result};
 use image::imageops::{self, FilterType};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Deserialize)]
+pub use bake::{THUMBNAIL, coverage, painting_name, slug};
+
+/// A piece traced out of the source image, as a closed polygon in source pixels.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Cut {
+    pub name: String,
+    pub points: Vec<[f32; 2]>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Layer {
     pub name: String,
     pub z: u32,
@@ -17,12 +28,18 @@ pub struct Layer {
     pub normal: PathBuf,
 }
 
-/// One painting. Layers are stored back to front, in painting pixels.
-#[derive(Debug, Clone, Deserialize)]
+/// One painting. Layers are stored back to front, in painting pixels. Cuts and the source
+/// image are the editable originals; layers are baked from them.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
     pub name: String,
     pub width: u32,
     pub height: u32,
+    #[serde(default)]
+    pub source: Option<PathBuf>,
+    #[serde(default)]
+    pub cuts: Vec<Cut>,
+    #[serde(default)]
     pub layers: Vec<Layer>,
     #[serde(skip)]
     pub dir: PathBuf,
@@ -38,6 +55,19 @@ impl Project {
         project.dir = dir.to_path_buf();
         project.layers.sort_by_key(|l| l.z);
         Ok(project)
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let path = self.dir.join("project.json");
+        let temp = self.dir.join("project.json.tmp");
+        std::fs::write(&temp, serde_json::to_string_pretty(self)? + "\n")
+            .with_context(|| format!("writing {}", temp.display()))?;
+        std::fs::rename(&temp, &path).with_context(|| format!("replacing {}", path.display()))
+    }
+
+    /// Whether this painting has a source image to cut from.
+    pub fn is_cuttable(&self) -> bool {
+        self.source.is_some()
     }
 }
 
@@ -215,6 +245,12 @@ impl View {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn projects_without_cuts_still_load() {
+        let p = Project::load(concat!(env!("CARGO_MANIFEST_DIR"), "/../../projects/pothos")).unwrap();
+        assert!(p.cuts.is_empty() && !p.is_cuttable());
+    }
 
     #[test]
     fn loads_pothos_back_to_front() {

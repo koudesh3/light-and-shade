@@ -1,3 +1,7 @@
 /target
 .DS_Store
 /shots/
+# Paintings made in the app stay on this machine; pothos is the bundled example.
+/projects/*
+!/projects/pothos/
+/projects/pothos/thumbnail.png
