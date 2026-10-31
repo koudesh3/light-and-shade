@@ -39,8 +39,6 @@ pub struct LightRoom {
     ball: Ball,
     /// Normals changed, so the home page cover needs redrawing.
     painted: bool,
-    /// Dragging pans the painting, for when there's no keyboard to hold Space on.
-    moving: bool,
     /// The layer being renamed.
     naming: Option<design::InlineName>,
     /// Present while painting normals.
@@ -82,7 +80,6 @@ impl LightRoom {
             view,
             ball: Ball::default(),
             painted: false,
-            moving: false,
             naming: None,
             painter: None,
             error: None,
@@ -120,19 +117,18 @@ impl LightRoom {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let paintable = self.project.is_paintable();
                 let cuttable = self.project.is_cuttable();
-                let count = 1 + paintable as usize + cuttable as usize;
-                design::card_tray(ui, design::INSPECTOR_CARD, count, |ui, cell| {
-                    if cuttable && design::cell_button(ui, "Edit cuts", false, cell).clicked() {
-                        nav = Some(Nav::Cut(self.project.clone()));
-                    }
-                    let painting = self.painter.is_some();
-                    if paintable && design::cell_button(ui, "Paint", painting, cell).clicked() {
-                        self.painter = (!painting).then(|| Painter::new(&self.project));
-                    }
-                    if design::cell_button(ui, "Move", self.moving, cell).clicked() {
-                        self.moving = !self.moving;
-                    }
-                });
+                let count = paintable as usize + cuttable as usize;
+                if count > 0 {
+                    design::card_tray(ui, design::INSPECTOR_CARD, count, |ui, cell| {
+                        if cuttable && design::cell_button(ui, "Edit cuts", false, cell).clicked() {
+                            nav = Some(Nav::Cut(self.project.clone()));
+                        }
+                        let painting = self.painter.is_some();
+                        if paintable && design::cell_button(ui, "Paint", painting, cell).clicked() {
+                            self.painter = (!painting).then(|| Painter::new(&self.project));
+                        }
+                    });
+                }
             });
         });
         nav
@@ -228,8 +224,8 @@ impl LightRoom {
             (rect.height() * ppp).round().max(1.0),
         ];
         let painting = self.painting_size();
-        let panning = self.moving
-            || ui.input(|i| i.key_down(Key::Space) || i.pointer.middle_down() || i.pointer.secondary_down());
+        let panning =
+            ui.input(|i| i.key_down(Key::Space) || i.pointer.middle_down() || i.pointer.secondary_down());
 
         let badge = design::zoom_badge_rect(ui, rect, self.view.zoom);
         let over_badge = ui
@@ -372,9 +368,6 @@ impl LightRoom {
             }
             if i.key_pressed(Key::O) {
                 self.orbit = !self.orbit;
-            }
-            if i.key_pressed(Key::M) {
-                self.moving = !self.moving;
             }
         });
     }

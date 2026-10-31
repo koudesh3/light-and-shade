@@ -21,7 +21,6 @@ const HISTORY: usize = 200;
 enum Tool {
     Cut,
     Hole,
-    Move,
 }
 
 /// Which outline a grabbed point belongs to.
@@ -194,11 +193,10 @@ impl CutBoard {
         if ctx.egui_wants_keyboard_input() {
             return;
         }
-        let (cut, hole, take_move, enter, escape, back, (undo, redo)) = ctx.input(|i| {
+        let (cut, hole, enter, escape, back, (undo, redo)) = ctx.input(|i| {
             (
                 i.key_pressed(Key::C),
                 i.key_pressed(Key::H),
-                i.key_pressed(Key::M),
                 i.key_pressed(Key::Enter),
                 i.key_pressed(Key::Escape),
                 i.key_pressed(Key::Backspace) || i.key_pressed(Key::Delete),
@@ -210,9 +208,6 @@ impl CutBoard {
         }
         if hole {
             self.tool = Tool::Hole;
-        }
-        if take_move {
-            self.tool = Tool::Move;
         }
         if enter {
             self.close_draft();
@@ -240,9 +235,9 @@ impl CutBoard {
 
     fn toolbar(&mut self, ui: &mut egui::Ui) -> Option<Nav> {
         let mut nav = None;
-        const TOOLS: [Tool; 3] = [Tool::Cut, Tool::Hole, Tool::Move];
+        const TOOLS: [Tool; 2] = [Tool::Cut, Tool::Hole];
         let selected = TOOLS.iter().position(|t| *t == self.tool).unwrap_or(0);
-        if let Some(i) = design::tabs(ui, ui.max_rect().center(), &["Cut", "Hole", "Move"], selected) {
+        if let Some(i) = design::tabs(ui, ui.max_rect().center(), &["Cut", "Hole"], selected) {
             self.tool = TOOLS[i];
         }
         ui.horizontal_centered(|ui| {
@@ -393,7 +388,7 @@ impl CutBoard {
                 i.pointer.primary_down(),
             )
         });
-        let panning = self.tool == Tool::Move || space || other_button;
+        let panning = space || other_button;
         if response.dragged() && panning {
             let ppp = ui.pixels_per_point();
             self.view.pan[0] += response.drag_delta().x * ppp;
