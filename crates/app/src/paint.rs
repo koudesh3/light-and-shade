@@ -1,7 +1,8 @@
 //! Painting normals onto a piece, in the light room, under the real light.
 
 use crate::ball::Sphere;
-use crate::{canvas, design};
+use crate::canvas::Placement;
+use crate::design;
 use anyhow::Result;
 use eframe::egui::{self, Color32, Key, Pos2, Rect, Shape, Stroke as Line, vec2};
 use las_core::{NormalMap, Project, Stroke, StrokeKind, View, encode_normal};
@@ -181,7 +182,7 @@ impl Painter {
         inside: bool,
     ) -> Result<bool> {
         let painting = [project.width as f32, project.height as f32];
-        let (scale, origin) = canvas::placement(ui, view, rect, painting);
+        let placed = Placement::of(ui, view, rect, painting);
         let (pressed, down, released, alt, at) = ui.input(|i| {
             let p = &i.pointer;
             (
@@ -193,8 +194,7 @@ impl Painter {
             )
         });
         let Some(at) = at else { return Ok(false) };
-        let v = at - rect.min;
-        let point = [(v.x - origin[0]) / scale, (v.y - origin[1]) / scale];
+        let point = placed.to_painting(at);
         let color = encode_normal(if self.tool == Tool::Erase {
             FACING_YOU
         } else {
@@ -248,8 +248,8 @@ impl Painter {
     /// The selected piece's outline, the shape being drawn, and the brush.
     pub fn overlay(&self, ui: &egui::Ui, project: &Project, view: &View, rect: Rect, hover: Option<Pos2>) {
         let painting = [project.width as f32, project.height as f32];
-        let (scale, origin) = canvas::placement(ui, view, rect, painting);
-        let to_screen = |p: &[f32; 2]| rect.min + vec2(origin[0] + p[0] * scale, origin[1] + p[1] * scale);
+        let placed = Placement::of(ui, view, rect, painting);
+        let to_screen = |p: &[f32; 2]| placed.to_screen(*p);
         let painter = ui.painter_at(rect);
         let outline: Vec<Pos2> = project.cuts[self.piece].points.iter().map(to_screen).collect();
         painter.add(Shape::closed_line(
@@ -264,8 +264,12 @@ impl Painter {
                 painter.add(Shape::line(points, Line::new(1.25, design::INK)));
             }
         } else if let Some(p) = hover {
-            painter.circle_stroke(p, self.radius * scale + 0.75, Line::new(2.5, Color32::WHITE));
-            painter.circle_stroke(p, self.radius * scale, Line::new(1.0, design::INK));
+            painter.circle_stroke(
+                p,
+                self.radius * placed.scale() + 0.75,
+                Line::new(2.5, Color32::WHITE),
+            );
+            painter.circle_stroke(p, self.radius * placed.scale(), Line::new(1.0, design::INK));
         }
     }
 }

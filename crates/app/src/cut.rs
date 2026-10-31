@@ -1,11 +1,11 @@
 //! The cutting board: trace pieces out of a painting.
 
+use crate::canvas::{self, Placement};
+use crate::design;
 use crate::studio::Nav;
-use crate::{canvas, design};
 use anyhow::{Context, Result};
 use eframe::egui::{
     self, Color32, ColorImage, Key, Pos2, Rect, Sense, Shape, Stroke, TextureHandle, TextureOptions, pos2,
-    vec2,
 };
 use image::imageops::{self, FilterType};
 use las_core::{Cut, Project, View};
@@ -237,18 +237,10 @@ impl CutBoard {
 
     fn pointer(&mut self, ui: &egui::Ui, inside: bool, panning: bool, rect: Rect) {
         let painting = self.painting();
-        let target = [rect.width(), rect.height()];
-        let (scale, origin) = (
-            self.view.scale(target, painting),
-            self.view.origin(target, painting),
-        );
-        let to_screen = |p: [f32; 2]| rect.min + vec2(origin[0] + p[0] * scale, origin[1] + p[1] * scale);
+        let placed = Placement::of(ui, &self.view, rect, painting);
         let to_image = |p: Pos2| {
-            let v = p - rect.min;
-            [
-                ((v.x - origin[0]) / scale).clamp(0.0, painting[0]),
-                ((v.y - origin[1]) / scale).clamp(0.0, painting[1]),
-            ]
+            let [x, y] = placed.to_painting(p);
+            [x.clamp(0.0, painting[0]), y.clamp(0.0, painting[1])]
         };
         let (pressed, down, released, at) = ui.input(|i| {
             let p = &i.pointer;
@@ -260,7 +252,7 @@ impl CutBoard {
             )
         });
         let Some(at) = at else { return };
-        let touching = |p: [f32; 2]| to_screen(p).distance(at) <= REACH;
+        let touching = |p: [f32; 2]| placed.to_screen(p).distance(at) <= REACH;
 
         if pressed && inside && !panning {
             let selected_points = self.selected.map(|i| (Some(i), &self.project.cuts[i].points));
@@ -340,10 +332,10 @@ impl CutBoard {
         }
         self.pointer(ui, response.contains_pointer(), panning, rect);
 
-        let (scale, origin) = canvas::placement(ui, &self.view, rect, painting);
-        let to_screen = |p: [f32; 2]| rect.min + vec2(origin[0] + p[0] * scale, origin[1] + p[1] * scale);
+        let placed = Placement::of(ui, &self.view, rect, painting);
+        let to_screen = |p: [f32; 2]| placed.to_screen(p);
         let painter = ui.painter_at(rect);
-        let image = Rect::from_min_size(to_screen([0.0, 0.0]), egui::Vec2::from(painting) * scale);
+        let image = Rect::from_min_size(to_screen([0.0, 0.0]), egui::Vec2::from(painting) * placed.scale());
         let uv = Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0));
         painter.image(self.texture.id(), image, uv, Color32::WHITE);
 

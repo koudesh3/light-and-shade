@@ -92,13 +92,6 @@ impl Scripted {
                 vec![],
             ]);
         }
-        let drag = points(&var("LAS_DRAG").unwrap_or_default());
-        if let (Some(first), Some(last)) = (drag.first(), drag.last()) {
-            input.push_back(vec![Event::PointerMoved(*first)]);
-            input.push_back(vec![button(*first, true)]);
-            input.extend(drag.iter().map(|p| vec![Event::PointerMoved(*p)]));
-            input.push_back(vec![button(*last, false)]);
-        }
         if let Some(lines) = var("LAS_SCROLL").and_then(|s| s.parse().ok()) {
             input.push_back(vec![
                 Event::PointerMoved(Pos2::new(680.0, 440.0)),
@@ -127,6 +120,13 @@ impl Scripted {
         }
         if let Some(factor) = var("LAS_PINCH").and_then(|f| f.parse().ok()) {
             input.push_back(vec![Event::PointerMoved(middle), Event::Zoom(factor)]);
+        }
+        let drag = points(&var("LAS_DRAG").unwrap_or_default());
+        if let (Some(first), Some(last)) = (drag.first(), drag.last()) {
+            input.push_back(vec![Event::PointerMoved(*first)]);
+            input.push_back(vec![button(*first, true)]);
+            input.extend(drag.iter().map(|p| vec![Event::PointerMoved(*p)]));
+            input.push_back(vec![button(*last, false)]);
         }
         Self {
             shot: var("LAS_SHOT").map(PathBuf::from),
