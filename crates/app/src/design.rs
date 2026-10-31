@@ -376,19 +376,42 @@ pub fn row(ui: &mut Ui, text: &str, selected: bool, color: Color32) -> Response 
     response
 }
 
-/// A layer row: returns the row itself, and whether its visibility dot was clicked.
+/// A small line-drawn eye, with a slash through it when closed.
+fn eye(ui: &Ui, center: Pos2, open: bool) {
+    const WIDTH: f32 = 7.0;
+    const HEIGHT: f32 = 4.5;
+    const STEPS: usize = 12;
+    let color = if open { INK } else { MUTED };
+    let stroke = Stroke::new(1.2, color);
+    // Two arcs meeting at a point at each corner of the eye.
+    let lid = |sign: f32, i: usize| {
+        let t = i as f32 / STEPS as f32 * 2.0 - 1.0;
+        center + vec2(t * WIDTH, sign * HEIGHT * (1.0 - t * t))
+    };
+    let outline: Vec<Pos2> = (0..STEPS)
+        .map(|i| lid(-1.0, i))
+        .chain((0..STEPS).map(|i| lid(1.0, STEPS - i)))
+        .collect();
+    let painter = ui.painter();
+    painter.add(Shape::closed_line(outline, stroke));
+    painter.circle_filled(center, 1.9, color);
+    if !open {
+        let reach = vec2(6.5, -6.5);
+        // A white edge keeps the slash distinct from the eye beneath it.
+        painter.line_segment([center - reach, center + reach], Stroke::new(3.0, WHITE));
+        painter.line_segment([center - reach, center + reach], stroke);
+    }
+}
+
+/// A layer row: returns the row itself, and whether its visibility eye was clicked.
 pub fn layer_row(ui: &mut Ui, text: &str, on: bool, selected: bool) -> (Response, bool) {
     let response = row(ui, text, selected, if on { INK } else { MUTED });
-    let dot = response.rect.right_center() - vec2(5.0, 0.0);
+    let dot = response.rect.right_center() - vec2(7.0, 0.0);
     let hit = Rect::from_center_size(dot, Vec2::splat(ROW));
     let clicked = ui
         .interact(hit, response.id.with("dot"), Sense::click())
         .clicked();
-    if on {
-        ui.painter().circle_filled(dot, 3.0, INK);
-    } else {
-        ui.painter().circle_stroke(dot, 2.5, Stroke::new(1.0, MUTED));
-    }
+    eye(ui, dot, on);
     (response, clicked)
 }
 
