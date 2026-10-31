@@ -19,6 +19,8 @@ use std::sync::mpsc::{self, Receiver, TryRecvError};
 /// Frames a scripted run waits before sending input.
 const SETTLE_FRAMES: u32 = 10;
 
+const APP_NAME: &str = "Light and Shade";
+
 /// Where a screen wants to go next.
 pub enum Nav {
     Home,
@@ -206,6 +208,7 @@ pub struct Studio {
     scripted: Scripted,
     frames: u32,
     settled: u32,
+    title: String,
 }
 
 impl Studio {
@@ -227,6 +230,7 @@ impl Studio {
             scripted,
             frames: 0,
             settled: 0,
+            title: APP_NAME.to_owned(),
         };
         if let Some(name) = studio.scripted.open.take() {
             let project = Project::load(studio.root.join(name))?;
@@ -342,6 +346,19 @@ impl Studio {
         }
     }
 
+    /// Keep the real window title current, for Mission Control and the Window menu.
+    fn sync_title(&mut self, ctx: &egui::Context) {
+        let title = match &self.screen {
+            Screen::Home(_) => APP_NAME,
+            Screen::Cut(board) => board.title(),
+            Screen::Light(room) => room.title(),
+        };
+        if self.title != title {
+            self.title = title.to_owned();
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.title.clone()));
+        }
+    }
+
     fn menu_commands(&mut self, ctx: &egui::Context) {
         while let Some(command) = self.menu.poll() {
             match (command, &mut self.screen) {
@@ -439,6 +456,7 @@ impl eframe::App for Studio {
         if let Some(nav) = nav {
             self.go(&ctx, nav);
         }
+        self.sync_title(&ctx);
         self.capture(&ctx);
     }
 }

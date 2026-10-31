@@ -21,6 +21,8 @@ pub const RAIL: Color32 = Color32::from_rgb(228, 228, 225);
 /// A strip above the toolbar for the window buttons, which float there on macOS. The
 /// buttons end about 22 points down, so this leaves the usual gap beneath them.
 const WINDOW_BUTTONS: f32 = if cfg!(target_os = "macos") { 36.0 } else { 0.0 };
+/// Where the middle of the window buttons sits, from the top of the window.
+const TITLE_CENTRE: f32 = 14.0;
 pub const RADIUS: f32 = 8.0;
 /// The columns beside a canvas, and the cards inside them.
 pub const SIDEBAR: f32 = 216.0;
@@ -250,7 +252,7 @@ pub fn tray<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> R {
 }
 
 /// The bar along the top of a screen.
-pub fn top_bar<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> R {
+pub fn top_bar<R>(ui: &mut Ui, title: &str, contents: impl FnOnce(&mut Ui) -> R) -> R {
     let frame = shell().inner_margin(egui::Margin {
         left: PAGE + TRAY_EDGE as i8,
         right: PAGE + TRAY_EDGE as i8,
@@ -261,7 +263,17 @@ pub fn top_bar<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> R {
         .exact_size(WINDOW_BUTTONS + ROW + TRAY_EDGE * 2.0)
         .show_separator_line(false)
         .frame(frame)
-        .show(ui, contents)
+        .show(ui, |ui| {
+            // The window's own title is hidden, so draw it level with the window buttons.
+            if WINDOW_BUTTONS > 0.0 {
+                let galley = one_line(ui, title, regular(TEXT), MUTED, 420.0);
+                let top = ui.max_rect().top() - WINDOW_BUTTONS + TITLE_CENTRE - galley.size().y / 2.0;
+                let at = pos2(ui.max_rect().center().x - galley.size().x / 2.0, top);
+                let painter = ui.painter().with_clip_rect(ui.ctx().content_rect());
+                painter.galley(at, galley, MUTED);
+            }
+            contents(ui)
+        })
         .inner
 }
 
@@ -321,14 +333,6 @@ fn one_line(ui: &Ui, text: &str, font: FontId, color: Color32, width: f32) -> Ar
     job.wrap.break_anywhere = true;
     job.wrap.overflow_character = Some('…');
     ui.fonts_mut(|f| f.layout_job(job))
-}
-
-/// Muted text in a row, no wider than `width`.
-pub fn muted_line(ui: &mut Ui, text: &str, width: f32) {
-    let galley = one_line(ui, text, regular(TEXT), MUTED, width);
-    let (rect, _) = ui.allocate_exact_size(vec2(galley.size().x, ROW), Sense::hover());
-    let top = rect.center().y - galley.size().y / 2.0;
-    ui.painter().galley(pos2(rect.left(), top), galley, MUTED);
 }
 
 /// A quiet label above a group of controls.

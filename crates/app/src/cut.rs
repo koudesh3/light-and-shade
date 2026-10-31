@@ -97,6 +97,10 @@ impl CutBoard {
         })
     }
 
+    pub fn title(&self) -> &str {
+        &self.project.name
+    }
+
     fn painting(&self) -> [f32; 2] {
         [self.project.width as f32, self.project.height as f32]
     }
@@ -246,8 +250,6 @@ impl CutBoard {
                     });
                 }
             });
-            ui.add_space(4.0);
-            design::muted_line(ui, &self.project.name, 260.0);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 design::tray(ui, |ui| {
                     let finished = !self.project.cuts.is_empty() || self.draft.len() >= 3;
@@ -489,7 +491,8 @@ impl CutBoard {
 
     pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Nav> {
         self.keys(&ui.ctx().clone());
-        let nav = design::top_bar(ui, |ui| self.toolbar(ui));
+        let title = self.project.name.clone();
+        let nav = design::top_bar(ui, &title, |ui| self.toolbar(ui));
         design::side_panel(egui::Panel::left("pieces"), design::SIDEBAR, ui, |ui| {
             self.left_panel(ui)
         });

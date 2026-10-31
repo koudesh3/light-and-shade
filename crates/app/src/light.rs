@@ -86,6 +86,10 @@ impl LightRoom {
         })
     }
 
+    pub fn title(&self) -> &str {
+        &self.project.name
+    }
+
     pub fn command(&mut self, command: Command) {
         match command {
             Command::Fit => self.view = View::framing(self.project.layer_bounds()),
@@ -144,7 +148,6 @@ impl LightRoom {
     fn left_panel(&mut self, ui: &mut egui::Ui) {
         design::group(ui, |ui| {
             ui.set_min_height(ui.available_height());
-            design::heading(ui, &self.project.name);
             design::heading(ui, "Layers");
             egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
@@ -399,7 +402,8 @@ impl LightRoom {
             self.light.y = a.sin() * 0.8;
             ctx.request_repaint();
         }
-        let nav = design::top_bar(ui, |ui| self.toolbar(ui));
+        let title = self.project.name.clone();
+        let nav = design::top_bar(ui, &title, |ui| self.toolbar(ui));
         design::side_panel(egui::Panel::left("sidebar"), design::SIDEBAR, ui, |ui| {
             self.left_panel(ui)
         });
