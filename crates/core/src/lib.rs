@@ -132,17 +132,46 @@ impl Project {
         if name.is_empty() {
             bail!("a painting needs a name");
         }
+        self.edit_file(|file| file["name"] = name.into())?;
+        self.name = name.to_owned();
+        Ok(())
+    }
+
+    /// Change a layer's name, and its cut's if it has one. Layers are found by `z`, because
+    /// that's what ties a layer to its entry in the file.
+    pub fn rename_layer(&mut self, index: usize, name: &str) -> Result<()> {
+        let name = name.trim();
+        if name.is_empty() {
+            bail!("a layer needs a name");
+        }
+        let z = self.layers[index].z;
+        self.edit_file(|file| {
+            let layers = file["layers"].as_array_mut().into_iter().flatten();
+            for layer in layers.filter(|l| l["z"] == z) {
+                layer["name"] = name.into();
+            }
+            if let Some(cut) = file["cuts"].get_mut(z as usize) {
+                cut["name"] = name.into();
+            }
+        })?;
+        self.layers[index].name = name.to_owned();
+        if let Some(cut) = self.cuts.get_mut(z as usize) {
+            cut.name = name.to_owned();
+        }
+        Ok(())
+    }
+
+    /// Change `project.json` directly, so anything in it this app doesn't model survives.
+    fn edit_file(&self, edit: impl FnOnce(&mut serde_json::Value)) -> Result<()> {
         let path = self.dir.join("project.json");
         let text = std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
         let mut file: serde_json::Value =
             serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
-        file["name"] = name.into();
+        edit(&mut file);
         let temp = self.dir.join("project.json.tmp");
         std::fs::write(&temp, serde_json::to_string_pretty(&file)? + "\n")
             .with_context(|| format!("writing {}", temp.display()))?;
-        std::fs::rename(&temp, &path).with_context(|| format!("replacing {}", path.display()))?;
-        self.name = name.to_owned();
-        Ok(())
+        std::fs::rename(&temp, &path).with_context(|| format!("replacing {}", path.display()))
     }
 
     /// Whether the source is too small to stay sharp on a large canvas.
@@ -437,6 +466,35 @@ mod tests {
         assert!((s - 1.84).abs() < 0.001, "{s}");
         assert!((o[0] + 1250.0 * s - 500.0).abs() < 0.01);
         assert!((o[1] + 2250.0 * s - 500.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn renaming_a_layer_keeps_its_cut_in_step_and_other_data_safe() {
+        let dir = std::env::temp_dir().join(format!("las-layer-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let text = r#"{ "name": "P", "width": 4, "height": 4,
+            "cuts": [{ "name": "A", "points": [] }, { "name": "B", "points": [] }],
+            "layers": [
+                { "name": "B", "z": 1, "x": 0, "y": 0, "w": 1, "h": 1,
+                  "color": "c", "normal": "n", "pivot": [1, 2] },
+                { "name": "A", "z": 0, "x": 0, "y": 0, "w": 1, "h": 1, "color": "c", "normal": "n" }
+            ] }"#;
+        std::fs::write(dir.join("project.json"), text).unwrap();
+
+        let mut project = Project::load(&dir).unwrap();
+        project.rename_layer(1, " Stem ").unwrap();
+        let loaded = Project::load(&dir).unwrap();
+        assert_eq!(loaded.layers[1].name, "Stem");
+        assert_eq!(loaded.layers[0].name, "A");
+        assert_eq!(loaded.cuts[1].name, "Stem");
+        assert_eq!(project.cuts[1].name, "Stem");
+        assert!(
+            std::fs::read_to_string(dir.join("project.json"))
+                .unwrap()
+                .contains("pivot")
+        );
+        assert!(project.rename_layer(0, "  ").is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

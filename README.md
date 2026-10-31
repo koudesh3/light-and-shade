@@ -30,7 +30,7 @@ Two fingers on a trackpad pan, and a pinch or a mouse wheel zooms. Both work on 
 
 **Cutting:** click around a piece or drag to draw it. Click the first point or press Return to close
 it. To pan by dragging, switch to the Move tool (M, and C to go back) or hold Space. The Hole tool (H) traces an area to punch out of a piece: the selected one, or else the
-frontmost piece the hole starts on. Select a piece to drag its hole points or fill its holes. Select a piece in the list to drag its
+frontmost piece the hole starts on. Select a piece to drag its hole points or fill its holes, and double-click one to rename it. Select a piece in the list to drag its
 points or delete it. Backspace removes the last point, Esc cancels, and Cmd+Z undoes. Later pieces sit
 in front. Done cuts them out into layers.
 
@@ -43,7 +43,7 @@ painting, with a slider pinned above the panel for how strongly. Moving it switc
 
 **Lighting:** drag the painting or the ball to move the light. To pan by dragging, turn on Move (M) or
 hold Space. Click a
-layer to hide it. Double-click,
+layer's eye to hide it, and double-click its name to rename it. Double-click,
 press F or click the zoom badge on the canvas to fit. Keys 1, 2 and 3 switch views, and O orbits the light.
 
 ## Layout

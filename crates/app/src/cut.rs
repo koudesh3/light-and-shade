@@ -52,6 +52,8 @@ pub struct CutBoard {
     history: Vec<Snapshot>,
     /// Snapshots stepped back from, most recent last. Any new change discards them.
     undone: Vec<Snapshot>,
+    /// The piece being renamed.
+    naming: Option<design::InlineName>,
     /// Cuts changed since this board opened, so the layers need rebuilding.
     dirty: bool,
     error: Option<String>,
@@ -92,6 +94,7 @@ impl CutBoard {
             stroke: None,
             history: Vec::new(),
             undone: Vec::new(),
+            naming: None,
             dirty,
             error: None,
         })
@@ -188,6 +191,9 @@ impl CutBoard {
     }
 
     fn keys(&mut self, ctx: &egui::Context) {
+        if ctx.egui_wants_keyboard_input() {
+            return;
+        }
         let (cut, hole, take_move, enter, escape, back, (undo, redo)) = ctx.input(|i| {
             (
                 i.key_pressed(Key::C),
@@ -276,8 +282,12 @@ impl CutBoard {
                 .show(ui, |ui| {
                     ui.spacing_mut().item_spacing.y = 0.0;
                     for (i, cut) in self.project.cuts.iter().enumerate().rev() {
-                        if design::row(ui, &cut.name, self.selected == Some(i), design::INK).clicked() {
+                        let row = design::row(ui, &cut.name, self.selected == Some(i), design::INK);
+                        if row.clicked() {
                             chosen = Some(i);
+                        }
+                        if row.double_clicked() {
+                            self.naming = Some(design::InlineName::over_row(i, row.rect, &cut.name));
                         }
                     }
                 });
@@ -412,7 +422,8 @@ impl CutBoard {
         let over_badge = ui
             .input(|i| i.pointer.interact_pos())
             .is_some_and(|p| badge.contains(p));
-        self.pointer(ui, response.contains_pointer() && !over_badge, panning, rect);
+        let free = !over_badge && self.naming.is_none();
+        self.pointer(ui, response.contains_pointer() && free, panning, rect);
 
         let placed = Placement::of(ui, &self.view, rect, painting);
         let to_screen = |p: [f32; 2]| placed.to_screen(p);
@@ -489,6 +500,23 @@ impl CutBoard {
         }
     }
 
+    fn finish_naming(&mut self, ctx: &egui::Context) {
+        let Some(naming) = &mut self.naming else { return };
+        match naming.show(ctx) {
+            design::NameChoice::Waiting => {}
+            design::NameChoice::Cancel => self.naming = None,
+            design::NameChoice::Save => {
+                let (index, text) = (naming.index, naming.text.trim().to_owned());
+                self.naming = None;
+                if !text.is_empty() && text != self.project.cuts[index].name {
+                    self.remember();
+                    self.project.cuts[index].name = text;
+                    self.save();
+                }
+            }
+        }
+    }
+
     pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Nav> {
         self.keys(&ui.ctx().clone());
         let title = self.project.name.clone();
@@ -499,6 +527,7 @@ impl CutBoard {
         egui::CentralPanel::default()
             .frame(design::canvas_frame(false))
             .show(ui, |ui| self.canvas(ui));
+        self.finish_naming(ui.ctx());
         nav
     }
 }

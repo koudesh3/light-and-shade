@@ -578,6 +578,33 @@ fn clicked_away(ctx: &egui::Context, rect: Rect) -> bool {
     ctx.input(|i| i.pointer.any_click() && i.pointer.interact_pos().is_some_and(|p| !rect.contains(p)))
 }
 
+/// A name being edited in place, over the row it belongs to.
+pub struct InlineName {
+    pub index: usize,
+    pub text: String,
+    rect: Rect,
+    /// Frames left to select the old name, until the text field exists.
+    selecting: u8,
+}
+
+impl InlineName {
+    pub fn over_row(index: usize, row: Rect, text: &str) -> Self {
+        Self {
+            index,
+            text: text.to_owned(),
+            // The field's text is inset by 6, so this keeps it where the row's text was.
+            rect: row.expand2(vec2(6.0, 0.0)),
+            selecting: 2,
+        }
+    }
+
+    pub fn show(&mut self, ctx: &egui::Context) -> NameChoice {
+        let opening = self.selecting > 0;
+        self.selecting = self.selecting.saturating_sub(1);
+        name_field(ctx, self.rect, &mut self.text, opening)
+    }
+}
+
 pub enum NameChoice {
     Waiting,
     Save,

@@ -41,6 +41,8 @@ pub struct LightRoom {
     painted: bool,
     /// Dragging pans the painting, for when there's no keyboard to hold Space on.
     moving: bool,
+    /// The layer being renamed.
+    naming: Option<design::InlineName>,
     /// Present while painting normals.
     painter: Option<Painter>,
     error: Option<String>,
@@ -81,6 +83,7 @@ impl LightRoom {
             ball: Ball::default(),
             painted: false,
             moving: false,
+            naming: None,
             painter: None,
             error: None,
         })
@@ -155,10 +158,11 @@ impl LightRoom {
                     let name = &self.project.layers[i].name;
                     let selected = self.painter.as_ref().is_some_and(|p| p.piece == i);
                     let (row, dot) = design::layer_row(ui, name, self.visible[i], selected);
-                    match &mut self.painter {
-                        Some(painter) if row.clicked() => painter.select(&self.project, i),
-                        None if row.clicked() => self.visible[i] = !self.visible[i],
-                        _ => {}
+                    if let Some(painter) = self.painter.as_mut().filter(|_| row.clicked()) {
+                        painter.select(&self.project, i);
+                    }
+                    if row.double_clicked() {
+                        self.naming = Some(design::InlineName::over_row(i, row.rect, name));
                     }
                     if dot {
                         self.visible[i] = !self.visible[i];
@@ -242,7 +246,7 @@ impl LightRoom {
         let over_badge = ui
             .input(|i| i.pointer.interact_pos())
             .is_some_and(|p| badge.contains(p));
-        if over_badge {
+        if over_badge || self.naming.is_some() {
             // The badge has its own click, so nothing here should paint or move the light.
         } else if panning {
             // Stay here for the whole press. A drag only registers once the pointer has
@@ -386,6 +390,22 @@ impl LightRoom {
         });
     }
 
+    fn finish_naming(&mut self, ctx: &egui::Context) {
+        let Some(naming) = &mut self.naming else { return };
+        match naming.show(ctx) {
+            design::NameChoice::Waiting => {}
+            design::NameChoice::Cancel => self.naming = None,
+            design::NameChoice::Save => {
+                let (index, text) = (naming.index, naming.text.clone());
+                self.naming = None;
+                if text != self.project.layers[index].name {
+                    let renamed = self.project.rename_layer(index, &text);
+                    self.error = renamed.err().map(|e| format!("{e:#}"));
+                }
+            }
+        }
+    }
+
     pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Nav> {
         let ctx = ui.ctx().clone();
         self.shortcuts(&ctx);
@@ -437,6 +457,7 @@ impl LightRoom {
         egui::CentralPanel::default()
             .frame(design::canvas_frame(true))
             .show(ui, |ui| self.viewport(ui));
+        self.finish_naming(&ctx);
         nav
     }
 }
