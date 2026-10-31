@@ -122,9 +122,6 @@ impl LightRoom {
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 design::tray(ui, |ui| {
-                    if design::button(ui, &format!("{:.0}%", self.view.zoom * 100.0)).clicked() {
-                        self.view = View::framing(self.project.layer_bounds());
-                    }
                     if design::toggle_button(ui, "Move", self.moving).clicked() {
                         self.moving = !self.moving;
                     }
@@ -237,7 +234,13 @@ impl LightRoom {
         let panning = self.moving
             || ui.input(|i| i.key_down(Key::Space) || i.pointer.middle_down() || i.pointer.secondary_down());
 
-        if panning {
+        let badge = design::zoom_badge_rect(ui, rect, self.view.zoom);
+        let over_badge = ui
+            .input(|i| i.pointer.interact_pos())
+            .is_some_and(|p| badge.contains(p));
+        if over_badge {
+            // The badge has its own click, so nothing here should paint or move the light.
+        } else if panning {
             // Stay here for the whole press. A drag only registers once the pointer has
             // moved, and falling through before that would leave a dot of paint.
             if response.dragged() {
@@ -276,10 +279,13 @@ impl LightRoom {
         debug_assert_eq!(size, [target[0] as u32, target[1] as u32]);
         ui.painter().image(id, rect, uv, Color32::WHITE);
         if let Some(painter) = &self.painter {
-            let brush = response.hover_pos().filter(|_| !panning);
+            let brush = response.hover_pos().filter(|_| !panning && !over_badge);
             painter.overlay(ui, &self.project, &self.view, rect, brush);
         }
         design::canvas_corners(ui, rect);
+        if design::zoom_badge(ui, badge, self.view.zoom).clicked() {
+            self.view = View::framing(self.project.layer_bounds());
+        }
         if response.hovered() {
             let icon = match (panning, self.painter.is_some()) {
                 (true, _) if response.dragged() => egui::CursorIcon::Grabbing,

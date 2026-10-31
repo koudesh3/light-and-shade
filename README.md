@@ -44,7 +44,7 @@ painting, with a slider pinned above the panel for how strongly. Moving it switc
 **Lighting:** drag the painting or the ball to move the light. To pan by dragging, turn on Move (M) or
 hold Space. Click a
 layer to hide it. Double-click,
-press F or click the zoom level to fit. Keys 1, 2 and 3 switch views, and O orbits the light.
+press F or click the zoom badge on the canvas to fit. Keys 1, 2 and 3 switch views, and O orbits the light.
 
 ## Layout
 

@@ -255,9 +255,6 @@ impl CutBoard {
                         self.close_draft();
                         nav = Some(Nav::Bake(self.project.clone()));
                     }
-                    if design::button(ui, &format!("{:.0}%", self.view.zoom * 100.0)).clicked() {
-                        self.view = View::default();
-                    }
                 });
             });
         });
@@ -409,7 +406,11 @@ impl CutBoard {
             };
             ui.ctx().set_cursor_icon(icon);
         }
-        self.pointer(ui, response.contains_pointer(), panning, rect);
+        let badge = design::zoom_badge_rect(ui, rect, self.view.zoom);
+        let over_badge = ui
+            .input(|i| i.pointer.interact_pos())
+            .is_some_and(|p| badge.contains(p));
+        self.pointer(ui, response.contains_pointer() && !over_badge, panning, rect);
 
         let placed = Placement::of(ui, &self.view, rect, painting);
         let to_screen = |p: [f32; 2]| placed.to_screen(p);
@@ -459,6 +460,9 @@ impl CutBoard {
             dot(to_screen(self.draft[0]), 5.0);
         }
         design::canvas_corners(ui, rect);
+        if design::zoom_badge(ui, badge, self.view.zoom).clicked() {
+            self.view = View::default();
+        }
         let low_resolution = format!(
             "This image is only {} × {}, so it will look soft. Dragging from Photos can give a small \
              preview: export the photo, then drop that file instead.",

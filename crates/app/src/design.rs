@@ -163,6 +163,35 @@ pub fn canvas_corners(ui: &Ui, rect: Rect) {
         .add(Shape::closed_line(points, Stroke::new(1.0, SHELL)));
 }
 
+/// Where the zoom badge sits on a canvas, so clicks on it can be kept off the painting.
+pub fn zoom_badge_rect(ui: &Ui, canvas: Rect, zoom: f32) -> Rect {
+    let width = width_of(ui, &zoom_label(zoom), regular(HEADING)) + 18.0;
+    let corner = canvas.left_bottom() + vec2(12.0, -12.0);
+    Rect::from_min_max(corner - vec2(0.0, 24.0), corner + vec2(width, 0.0))
+}
+
+fn zoom_label(zoom: f32) -> String {
+    format!("{:.0}%", zoom * 100.0)
+}
+
+/// The zoom level, on the canvas. Clicking it fits the painting again.
+pub fn zoom_badge(ui: &mut Ui, rect: Rect, zoom: f32) -> Response {
+    let response = ui.interact(rect, ui.scope_id().with("zoom"), Sense::click());
+    let fill = hover_fill(ui, &response, false);
+    ui.painter().add(squircle(rect, RADIUS * 0.75, fill));
+    ui.painter()
+        .add(squircle_outline(rect, RADIUS * 0.75, Stroke::new(1.0, RAIL)));
+    let label = zoom_label(zoom);
+    ui.painter().text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        label,
+        regular(HEADING),
+        MUTED,
+    );
+    response
+}
+
 /// A group of controls on its own white squircle, as wide as the space it's in.
 pub fn group<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> R {
     let background = ui.painter().add(Shape::Noop);
