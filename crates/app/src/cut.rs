@@ -236,8 +236,8 @@ impl CutBoard {
             self.tool = TOOLS[i];
         }
         ui.horizontal_centered(|ui| {
-            design::tray(ui, |ui| {
-                if design::button(ui, "‹ Paintings").clicked() {
+            design::card_tray(ui, design::SIDEBAR_CARD, 1, |ui, cell| {
+                if design::cell_button(ui, "‹ Paintings", false, cell).clicked() {
                     self.close_draft();
                     nav = Some(if self.dirty {
                         Nav::BakeHome(self.project.clone())
@@ -490,7 +490,9 @@ impl CutBoard {
     pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Nav> {
         self.keys(&ui.ctx().clone());
         let nav = design::top_bar(ui, |ui| self.toolbar(ui));
-        design::side_panel(egui::Panel::left("pieces"), 216.0, ui, |ui| self.left_panel(ui));
+        design::side_panel(egui::Panel::left("pieces"), design::SIDEBAR, ui, |ui| {
+            self.left_panel(ui)
+        });
         egui::CentralPanel::default()
             .frame(design::canvas_frame(false))
             .show(ui, |ui| self.canvas(ui));

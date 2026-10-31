@@ -21,6 +21,11 @@ pub const RAIL: Color32 = Color32::from_rgb(228, 228, 225);
 /// A strip above the toolbar for the window buttons, which float there on macOS.
 const WINDOW_BUTTONS: f32 = if cfg!(target_os = "macos") { 28.0 } else { 0.0 };
 pub const RADIUS: f32 = 8.0;
+/// The columns beside a canvas, and the cards inside them.
+pub const SIDEBAR: f32 = 216.0;
+pub const INSPECTOR: f32 = 244.0;
+pub const SIDEBAR_CARD: f32 = SIDEBAR - PAGE as f32 * 2.0;
+pub const INSPECTOR_CARD: f32 = INSPECTOR - PAGE as f32 * 2.0;
 pub const ROW: f32 = 28.0;
 pub const GAP: f32 = 6.0;
 pub const PAGE: i8 = 14;
@@ -204,6 +209,29 @@ pub fn group<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> R {
     ui.painter()
         .set(background, squircle(inner.response.rect, SURFACE, WHITE));
     inner.inner
+}
+
+/// A toolbar row as wide as the card below it, with `count` equal cells. `contents` gets the
+/// width of a cell.
+pub fn card_tray<R>(
+    ui: &mut Ui,
+    card_width: f32,
+    count: usize,
+    contents: impl FnOnce(&mut Ui, f32) -> R,
+) -> R {
+    let (rect, _) = ui.allocate_exact_size(vec2(card_width - TRAY_EDGE * 2.0, ROW), Sense::hover());
+    ui.painter()
+        .add(squircle(rect.expand(TRAY_EDGE), RADIUS * 1.25, WHITE));
+    let cell = (rect.width() - GAP * count.saturating_sub(1) as f32) / count.max(1) as f32;
+    let layout = egui::Layout::left_to_right(egui::Align::Center);
+    let mut row = ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(layout));
+    contents(&mut row, cell)
+}
+
+/// A text button that fills a tray cell.
+pub fn cell_button(ui: &mut Ui, text: &str, on: bool, width: f32) -> Response {
+    let (rect, _) = ui.allocate_exact_size(vec2(width, ROW), Sense::hover());
+    pill(ui, rect, text, on)
 }
 
 /// A row of toolbar controls on a small white squircle, hugging what's inside.

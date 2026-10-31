@@ -110,8 +110,8 @@ impl LightRoom {
         }
         let mut nav = None;
         ui.horizontal_centered(|ui| {
-            design::tray(ui, |ui| {
-                if design::button(ui, "‹ Paintings").clicked() {
+            design::card_tray(ui, design::SIDEBAR_CARD, 1, |ui, cell| {
+                if design::cell_button(ui, "‹ Paintings", false, cell).clicked() {
                     if self.painted
                         && let Err(e) = self.project.write_thumbnail()
                     {
@@ -121,18 +121,19 @@ impl LightRoom {
                 }
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                design::tray(ui, |ui| {
-                    if design::toggle_button(ui, "Move", self.moving).clicked() {
-                        self.moving = !self.moving;
-                    }
-                    if self.project.is_paintable() {
-                        let painting = self.painter.is_some();
-                        if design::toggle_button(ui, "Paint", painting).clicked() {
-                            self.painter = (!painting).then(|| Painter::new(&self.project));
-                        }
-                    }
-                    if self.project.is_cuttable() && design::button(ui, "Edit cuts").clicked() {
+                let paintable = self.project.is_paintable();
+                let cuttable = self.project.is_cuttable();
+                let count = 1 + paintable as usize + cuttable as usize;
+                design::card_tray(ui, design::INSPECTOR_CARD, count, |ui, cell| {
+                    if cuttable && design::cell_button(ui, "Edit cuts", false, cell).clicked() {
                         nav = Some(Nav::Cut(self.project.clone()));
+                    }
+                    let painting = self.painter.is_some();
+                    if paintable && design::cell_button(ui, "Paint", painting, cell).clicked() {
+                        self.painter = (!painting).then(|| Painter::new(&self.project));
+                    }
+                    if design::cell_button(ui, "Move", self.moving, cell).clicked() {
+                        self.moving = !self.moving;
                     }
                 });
             });
@@ -399,28 +400,36 @@ impl LightRoom {
             ctx.request_repaint();
         }
         let nav = design::top_bar(ui, |ui| self.toolbar(ui));
-        design::side_panel(egui::Panel::left("sidebar"), 216.0, ui, |ui| self.left_panel(ui));
-        design::side_panel_with_gutter(egui::Panel::right("inspector"), 244.0, GUTTER as i8, ui, |ui| {
-            // Pinned above the scrolling part, so it can't scroll out of reach while painting.
-            if self.mode == Mode::Normals || self.painter.is_some() {
-                ui.scope(|ui| {
-                    ui.set_max_width(ui.available_width() - GUTTER);
-                    design::group(ui, |ui| {
-                        let changed =
-                            design::slider(ui, "Normal opacity", &mut self.normal_opacity, 0.0..=1.0);
-                        if changed {
-                            self.mode = Mode::Normals;
-                        }
-                    });
-                });
-                design::gap(ui);
-            }
-            egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-                // Keep a gutter for the scroll bar, so it never sits on the values.
-                ui.set_max_width(ui.available_width() - GUTTER);
-                self.right_panel(ui)
-            });
+        design::side_panel(egui::Panel::left("sidebar"), design::SIDEBAR, ui, |ui| {
+            self.left_panel(ui)
         });
+        design::side_panel_with_gutter(
+            egui::Panel::right("inspector"),
+            design::INSPECTOR,
+            GUTTER as i8,
+            ui,
+            |ui| {
+                // Pinned above the scrolling part, so it can't scroll out of reach while painting.
+                if self.mode == Mode::Normals || self.painter.is_some() {
+                    ui.scope(|ui| {
+                        ui.set_max_width(ui.available_width() - GUTTER);
+                        design::group(ui, |ui| {
+                            let changed =
+                                design::slider(ui, "Normal opacity", &mut self.normal_opacity, 0.0..=1.0);
+                            if changed {
+                                self.mode = Mode::Normals;
+                            }
+                        });
+                    });
+                    design::gap(ui);
+                }
+                egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
+                    // Keep a gutter for the scroll bar, so it never sits on the values.
+                    ui.set_max_width(ui.available_width() - GUTTER);
+                    self.right_panel(ui)
+                });
+            },
+        );
         egui::CentralPanel::default()
             .frame(design::canvas_frame(true))
             .show(ui, |ui| self.viewport(ui));
