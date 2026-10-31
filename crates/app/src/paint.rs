@@ -9,6 +9,10 @@ use las_core::{NormalMap, Project, Stroke, StrokeKind, View, encode_normal};
 
 const HISTORY: usize = 100;
 const FACING_YOU: [f32; 3] = [0.0, 0.0, 1.0];
+/// How close, in screen points, the pointer must be to count as touching a point.
+const REACH: f32 = 10.0;
+/// How far the pointer moves between freehand shape points, in screen points.
+const STROKE_STEP: f32 = 6.0;
 
 #[derive(Clone, Copy, PartialEq)]
 enum Tool {
@@ -25,8 +29,12 @@ pub struct Painter {
     radius: f32,
     pub piece: usize,
     map: NormalMap,
-    /// Points of the stroke under way, in source pixels.
+    /// Points of the brush stroke under way, in source pixels.
     stroke: Option<Vec<[f32; 2]>>,
+    /// The shape being placed, in source pixels. It stays open across clicks.
+    shape: Vec<[f32; 2]>,
+    /// While dragging a shape: the last freehand point on screen, and whether the drag began it.
+    shape_drag: Option<(Pos2, bool)>,
     sphere: Sphere,
     /// Earlier stroke lists, and the piece each belongs to.
     history: Vec<(usize, Vec<Stroke>)>,
@@ -43,6 +51,8 @@ impl Painter {
             piece,
             map: NormalMap::from_strokes(&project.layers[piece], &project.cuts[piece].strokes),
             stroke: None,
+            shape: Vec::new(),
+            shape_drag: None,
             sphere: Sphere::default(),
             history: Vec::new(),
         }
@@ -56,6 +66,24 @@ impl Painter {
         self.piece = piece;
         self.map = NormalMap::from_strokes(&project.layers[piece], &project.cuts[piece].strokes);
         self.stroke = None;
+        self.shape.clear();
+        self.shape_drag = None;
+    }
+
+    /// Fill the shape being placed, if it has enough points to enclose anything.
+    fn close_shape(&mut self, project: &mut Project) -> Result<bool> {
+        self.shape_drag = None;
+        if self.shape.len() < 3 {
+            return Ok(false);
+        }
+        let stroke = Stroke {
+            kind: StrokeKind::Shape,
+            normal: self.normal,
+            radius: 0.0,
+            points: std::mem::take(&mut self.shape),
+        };
+        self.commit(project, stroke)?;
+        Ok(true)
     }
 
     fn remember(&mut self, project: &Project) {
@@ -120,6 +148,7 @@ impl Painter {
         let selected = TOOLS.iter().position(|t| *t == self.tool).unwrap_or(0);
         if let Some(i) = design::tabs(ui, rect.center(), &["Brush", "Shape", "Erase"], selected) {
             self.tool = TOOLS[i];
+            self.shape.clear();
         }
         ui.add_space(4.0);
         design::whole_slider(ui, "Size", &mut self.radius, 6.0..=300.0);
@@ -151,14 +180,15 @@ impl Painter {
         if ctx.egui_wants_keyboard_input() {
             return Ok(false);
         }
-        let undo = ctx.input(|i| {
+        let (enter, escape, back, undo) = ctx.input(|i| {
             for (key, tool) in [
                 (Key::B, Tool::Brush),
                 (Key::L, Tool::Shape),
                 (Key::E, Tool::Erase),
             ] {
-                if i.key_pressed(key) {
+                if i.key_pressed(key) && self.tool != tool {
                     self.tool = tool;
+                    self.shape.clear();
                 }
             }
             if i.key_pressed(Key::OpenBracket) {
@@ -167,8 +197,24 @@ impl Painter {
             if i.key_pressed(Key::CloseBracket) {
                 self.radius = (self.radius + 10.0).min(300.0);
             }
-            i.modifiers.command && i.key_pressed(Key::Z)
+            (
+                i.key_pressed(Key::Enter),
+                i.key_pressed(Key::Escape),
+                i.key_pressed(Key::Backspace) || i.key_pressed(Key::Delete),
+                i.modifiers.command && i.key_pressed(Key::Z),
+            )
         });
+        if escape {
+            self.shape.clear();
+        }
+        // While placing a shape, stepping back removes its last point.
+        if (back || undo) && !self.shape.is_empty() {
+            self.shape.pop();
+            return Ok(false);
+        }
+        if enter {
+            return self.close_shape(project);
+        }
         if undo { self.undo(project) } else { Ok(false) }
     }
 
@@ -200,7 +246,11 @@ impl Painter {
         } else {
             self.normal
         });
-        let painting_line = self.tool != Tool::Shape;
+        let placing_shape = self.tool == Tool::Shape;
+        let on_first = self
+            .shape
+            .first()
+            .is_some_and(|p| placed.to_screen(*p).distance(at) <= REACH);
         let mut changed = false;
 
         if pressed && inside {
@@ -210,28 +260,45 @@ impl Painter {
                 }
                 return Ok(false);
             }
+            if placing_shape {
+                if self.shape.len() >= 3 && on_first {
+                    return self.close_shape(project);
+                }
+                self.shape_drag = Some((at, self.shape.is_empty()));
+                self.shape.push(point);
+                return Ok(false);
+            }
             self.stroke = Some(vec![point]);
-            if painting_line {
-                self.map.segment(point, point, self.radius, color);
-                changed = true;
+            self.map.segment(point, point, self.radius, color);
+            changed = true;
+        } else if down && let Some((last, began)) = self.shape_drag {
+            if last.distance(at) >= STROKE_STEP {
+                self.shape.push(point);
+                self.shape_drag = Some((at, began));
             }
         } else if down && let Some(points) = &mut self.stroke {
             let last = *points.last().expect("strokes start with a point");
             if (last[0] - point[0]).hypot(last[1] - point[1]) >= 1.0 {
                 points.push(point);
-                if painting_line {
-                    self.map.segment(last, point, self.radius, color);
-                    changed = true;
-                }
+                self.map.segment(last, point, self.radius, color);
+                changed = true;
             }
         }
-        if released && let Some(points) = self.stroke.take() {
-            let kind = match self.tool {
-                Tool::Brush => StrokeKind::Brush,
-                Tool::Erase => StrokeKind::Erase,
-                Tool::Shape => StrokeKind::Shape,
-            };
-            if kind != StrokeKind::Shape || points.len() >= 3 {
+        if released {
+            // A drag that drew the whole shape is a lasso, so letting go fills it. One that
+            // adds to placed points only closes if it ends back at the start.
+            if let Some((_, began)) = self.shape_drag.take()
+                && self.shape.len() >= 3
+                && (began || on_first)
+            {
+                return self.close_shape(project);
+            }
+            if let Some(points) = self.stroke.take() {
+                let kind = if self.tool == Tool::Erase {
+                    StrokeKind::Erase
+                } else {
+                    StrokeKind::Brush
+                };
                 let stroke = Stroke {
                     kind,
                     normal: self.normal,
@@ -258,10 +325,22 @@ impl Painter {
         ));
         painter.add(Shape::closed_line(outline, Line::new(1.25, design::INK)));
         if self.tool == Tool::Shape {
-            if let Some(points) = &self.stroke {
-                let points: Vec<Pos2> = points.iter().map(to_screen).collect();
-                painter.add(Shape::line(points.clone(), Line::new(3.0, Color32::WHITE)));
-                painter.add(Shape::line(points, Line::new(1.25, design::INK)));
+            let dots: Vec<Pos2> = self.shape.iter().map(to_screen).collect();
+            let mut points = dots.clone();
+            if let Some(p) = hover.filter(|_| !dots.is_empty() && self.shape_drag.is_none()) {
+                points.push(p);
+            }
+            painter.add(Shape::line(points.clone(), Line::new(3.0, Color32::WHITE)));
+            painter.add(Shape::line(points, Line::new(1.25, design::INK)));
+            for (i, dot) in dots.iter().enumerate() {
+                let radius = if i == 0 { 5.0 } else { 3.5 };
+                painter.circle(*dot, radius, Color32::WHITE, Line::new(1.5, design::INK));
+            }
+            if !dots.is_empty() {
+                design::toast(
+                    ui.ctx(),
+                    "Click the first point or press Return to fill. Esc to cancel.",
+                );
             }
         } else if let Some(p) = hover {
             painter.circle_stroke(

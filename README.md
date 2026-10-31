@@ -35,7 +35,7 @@ in front. Done cuts them out into layers.
 
 **Painting normals:** click Paint in the studio, pick a piece in the list, and pick a facing direction
 on the sphere. Set the sphere to 32 or 16 shades to limit it to that many evenly spread directions, as
-Voronoi cells. Brush (B) paints it, Shape (L) fills an area you draw around, and Erase (E) goes back to
+Voronoi cells. Brush (B) paints it, Shape (L) fills an area you outline with dots, or with a quick drag,, and Erase (E) goes back to
 facing you. `[` and `]` change the size, Option-click picks up a direction from the piece, and Cmd+Z
 undoes. Strokes stay editable and survive re-cutting. The Normals view shows normals over the lit
 painting, with a slider pinned above the panel for how strongly. Moving it switches to that view.
