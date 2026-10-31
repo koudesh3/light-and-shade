@@ -246,16 +246,6 @@ impl CutBoard {
             self.tool = TOOLS[i];
         }
         ui.horizontal_centered(|ui| {
-            design::card_tray(ui, design::SIDEBAR_CARD, 1, |ui, cell| {
-                if design::cell_button(ui, "‹ Paintings", false, cell).clicked() {
-                    self.close_draft();
-                    nav = Some(if self.dirty {
-                        Nav::BakeHome(self.project.clone())
-                    } else {
-                        Nav::Home
-                    });
-                }
-            });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 design::tray(ui, |ui| {
                     let finished = !self.project.cuts.is_empty() || self.draft.len() >= 3;
@@ -500,6 +490,16 @@ impl CutBoard {
         }
     }
 
+    /// Go back to the home page, rebuilding the layers if the cuts changed.
+    pub fn leave(&mut self) -> Nav {
+        self.close_draft();
+        if self.dirty {
+            Nav::BakeHome(self.project.clone())
+        } else {
+            Nav::Home
+        }
+    }
+
     fn finish_naming(&mut self, ctx: &egui::Context) {
         let Some(naming) = &mut self.naming else { return };
         match naming.show(ctx) {
@@ -520,7 +520,8 @@ impl CutBoard {
     pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Nav> {
         self.keys(&ui.ctx().clone());
         let title = self.project.name.clone();
-        let nav = design::top_bar(ui, &title, |ui| self.toolbar(ui));
+        let (nav, back) = design::top_bar(ui, &title, |ui| self.toolbar(ui));
+        let nav = if back { Some(self.leave()) } else { nav };
         design::side_panel(egui::Panel::left("pieces"), design::SIDEBAR, ui, |ui| {
             self.left_panel(ui)
         });

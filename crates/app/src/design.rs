@@ -18,18 +18,18 @@ pub const MUTED: Color32 = Color32::from_rgb(138, 138, 134);
 pub const WASH: Color32 = Color32::from_rgb(242, 242, 240);
 pub const RAIL: Color32 = Color32::from_rgb(228, 228, 225);
 
-/// A strip above the toolbar for the window buttons, which float there on macOS. The
-/// buttons end about 22 points down, so this leaves the usual gap beneath them.
-const WINDOW_BUTTONS: f32 = if cfg!(target_os = "macos") { 36.0 } else { 0.0 };
-/// Where the middle of the window buttons sits, from the top of the window.
-const TITLE_CENTRE: f32 = 15.25;
-/// Where the title starts, just past the window buttons.
-const TITLE_LEFT: f32 = 78.0;
+/// The strip above the toolbar, holding the window buttons, the back chevron and the title.
+const STRIP: f32 = 42.0;
+/// How far the window buttons sit from the left of the window, on macOS.
+pub const WINDOW_BUTTONS_LEFT: f32 = 16.0;
+/// Where the middle of that row sits, from the top of the window.
+pub const STRIP_CENTRE: f32 = 22.0;
+/// Where the back chevron goes, past the window buttons if there are any.
+const BACK_CENTRE: f32 = if cfg!(target_os = "macos") { 100.0 } else { 26.0 };
 pub const RADIUS: f32 = 8.0;
 /// The columns beside a canvas, and the cards inside them.
 pub const SIDEBAR: f32 = 216.0;
 pub const INSPECTOR: f32 = 244.0;
-pub const SIDEBAR_CARD: f32 = SIDEBAR - PAGE as f32 * 2.0;
 pub const INSPECTOR_CARD: f32 = INSPECTOR - PAGE as f32 * 2.0;
 pub const ROW: f32 = 28.0;
 pub const GAP: f32 = 6.0;
@@ -258,29 +258,45 @@ pub fn tray<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> R {
 }
 
 /// The bar along the top of a screen.
-pub fn top_bar<R>(ui: &mut Ui, title: &str, contents: impl FnOnce(&mut Ui) -> R) -> R {
+pub fn top_bar<R>(ui: &mut Ui, title: &str, contents: impl FnOnce(&mut Ui) -> R) -> (R, bool) {
     let frame = shell().inner_margin(egui::Margin {
         left: PAGE + TRAY_EDGE as i8,
         right: PAGE + TRAY_EDGE as i8,
-        top: WINDOW_BUTTONS as i8,
+        top: STRIP as i8,
         bottom: 0,
     });
     egui::Panel::top("top bar")
-        .exact_size(WINDOW_BUTTONS + ROW + TRAY_EDGE * 2.0)
+        .exact_size(STRIP + ROW + TRAY_EDGE * 2.0)
         .show_separator_line(false)
         .frame(frame)
         .show(ui, |ui| {
-            // The window's own title is hidden, so draw it beside the window buttons.
-            if WINDOW_BUTTONS > 0.0 {
-                let galley = one_line(ui, title, regular(TEXT), MUTED, 420.0);
-                let top = ui.max_rect().top() - WINDOW_BUTTONS + TITLE_CENTRE - galley.size().y / 2.0;
-                let at = pos2(TITLE_LEFT, top);
-                let painter = ui.painter().with_clip_rect(ui.ctx().content_rect());
-                painter.galley(at, galley, MUTED);
-            }
-            contents(ui)
+            let back = back_chevron(ui);
+            // The window's own title is hidden, so draw it in the same row.
+            let galley = one_line(ui, title, regular(TEXT), MUTED, 420.0);
+            let top = STRIP_CENTRE + 0.5 - galley.size().y / 2.0;
+            let at = pos2(BACK_CENTRE + 20.0, top);
+            let painter = ui.painter().with_clip_rect(ui.ctx().content_rect());
+            painter.galley(at, galley, MUTED);
+            (contents(ui), back)
         })
         .inner
+}
+
+/// A bare chevron in the top strip. Returns whether it was clicked.
+fn back_chevron(ui: &mut Ui) -> bool {
+    let rect = Rect::from_center_size(pos2(BACK_CENTRE, STRIP_CENTRE), Vec2::splat(ROW));
+    let mut full = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+    full.set_clip_rect(ui.ctx().content_rect());
+    let response = full.interact(rect, ui.scope_id().with("back"), Sense::click());
+    let t = ui
+        .ctx()
+        .animate_bool_with_time(response.id, response.hovered(), 0.1);
+    let painter = full.painter();
+    painter.add(squircle(rect, RADIUS, SHELL.lerp_to_gamma(RAIL, t)));
+    let c = rect.center();
+    let line = [c + vec2(3.0, -7.0), c + vec2(-3.5, 0.0), c + vec2(3.0, 7.0)];
+    painter.add(Shape::line(line.to_vec(), Stroke::new(1.75, INK)));
+    response.on_hover_text("Back to Paintings").clicked()
 }
 
 /// A fixed column beside the canvas.

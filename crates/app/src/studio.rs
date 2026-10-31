@@ -4,7 +4,7 @@
 use crate::cut::CutBoard;
 use crate::home::{Home, pick_image};
 use crate::light::LightRoom;
-use crate::platform::{Command, Menu};
+use crate::platform::{Command, Menu, place_window_buttons};
 use crate::{design, library};
 use anyhow::{Context, Result, anyhow};
 use eframe::egui::{self, Event, Pos2};
@@ -367,6 +367,14 @@ impl Studio {
                         self.go(ctx, Nav::New(image));
                     }
                 }
+                (Command::Back, Screen::Light(room)) => {
+                    let nav = room.leave();
+                    self.go(ctx, nav);
+                }
+                (Command::Back, Screen::Cut(board)) => {
+                    let nav = board.leave();
+                    self.go(ctx, nav);
+                }
                 (command, Screen::Light(room)) => room.command(command),
                 _ => {}
             }
@@ -437,8 +445,13 @@ impl eframe::App for Studio {
         }
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        place_window_buttons(
+            frame,
+            design::WINDOW_BUTTONS_LEFT as f64,
+            design::STRIP_CENTRE as f64,
+        );
         self.finish_job(&ctx);
         self.menu_commands(&ctx);
         let nav = match &mut self.screen {

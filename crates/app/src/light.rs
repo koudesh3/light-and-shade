@@ -100,7 +100,7 @@ impl LightRoom {
             Command::Normals => self.mode = Mode::Normals,
             Command::Original => self.mode = Mode::Original,
             Command::Orbit => self.orbit = !self.orbit,
-            Command::New => {}
+            Command::New | Command::Back => {}
         }
     }
 
@@ -117,16 +117,6 @@ impl LightRoom {
         }
         let mut nav = None;
         ui.horizontal_centered(|ui| {
-            design::tray(ui, |ui| {
-                if design::button(ui, "‹ Paintings").clicked() {
-                    if self.painted
-                        && let Err(e) = self.project.write_thumbnail()
-                    {
-                        self.error = Some(format!("{e:#}"));
-                    }
-                    nav = Some(Nav::Home);
-                }
-            });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let paintable = self.project.is_paintable();
                 let cuttable = self.project.is_cuttable();
@@ -389,6 +379,16 @@ impl LightRoom {
         });
     }
 
+    /// Go back to the home page, with a fresh cover if anything was painted.
+    pub fn leave(&mut self) -> Nav {
+        if self.painted
+            && let Err(e) = self.project.write_thumbnail()
+        {
+            self.error = Some(format!("{e:#}"));
+        }
+        Nav::Home
+    }
+
     fn finish_naming(&mut self, ctx: &egui::Context) {
         let Some(naming) = &mut self.naming else { return };
         match naming.show(ctx) {
@@ -422,7 +422,8 @@ impl LightRoom {
             ctx.request_repaint();
         }
         let title = self.project.name.clone();
-        let nav = design::top_bar(ui, &title, |ui| self.toolbar(ui));
+        let (nav, back) = design::top_bar(ui, &title, |ui| self.toolbar(ui));
+        let nav = if back { Some(self.leave()) } else { nav };
         design::side_panel_with_gutter(
             egui::Panel::right("inspector"),
             design::INSPECTOR,
