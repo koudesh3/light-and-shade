@@ -33,7 +33,7 @@ pub const SIDEBAR_CARD: f32 = SIDEBAR - PAGE as f32 * 2.0;
 pub const INSPECTOR_CARD: f32 = INSPECTOR - PAGE as f32 * 2.0;
 pub const ROW: f32 = 28.0;
 pub const GAP: f32 = 6.0;
-pub const PAGE: i8 = 14;
+pub const PAGE: i8 = 11;
 /// How far a tray reaches past the controls on it.
 const TRAY_EDGE: f32 = 3.0;
 
