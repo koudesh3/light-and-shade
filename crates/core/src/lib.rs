@@ -1,6 +1,7 @@
 //! Project format and pure scene maths. No GPU and no UI in here.
 
 mod bake;
+mod package;
 mod paint;
 
 use anyhow::{Context, Result, bail};
@@ -9,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 pub use bake::{THUMBNAIL, coverage, painting_name, slug};
+pub use package::PACKAGE_EXTENSION;
 pub use paint::{
     NormalMap, Stroke, StrokeKind, decode_normal, direction_palette, encode_normal, nearest_direction,
 };

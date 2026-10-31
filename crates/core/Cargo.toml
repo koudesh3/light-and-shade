@@ -9,3 +9,4 @@ anyhow.workspace = true
 image.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+zip = { version = "9.1.3", default-features = false, features = ["deflate"] }

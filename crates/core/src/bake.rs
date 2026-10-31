@@ -55,7 +55,7 @@ pub fn slug(name: &str) -> String {
     }
 }
 
-fn unused_folder(root: &Path, base: &str) -> PathBuf {
+pub(crate) fn unused_folder(root: &Path, base: &str) -> PathBuf {
     let first = root.join(base);
     if !first.exists() {
         return first;

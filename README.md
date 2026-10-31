@@ -23,7 +23,8 @@ tracked by git.
 
 ## Using it
 
-Drop a PNG, JPEG or WebP anywhere on the home page, or click New painting. Each card's … menu renames a painting or moves it to the Trash. Covers show the painting and its normals, split on the diagonal.
+Drop a PNG, JPEG or WebP anywhere on the home page, or click New painting. Each card's … menu renames a painting, exports it, or moves it to the Trash. Exports are
+`.lightshade` files, a zip of the painting's folder; drop one on the home page to import it. Covers show the painting and its normals, split on the diagonal.
 
 Two fingers on a trackpad pan, and a pinch or a mouse wheel zooms. Both work on every canvas.
 

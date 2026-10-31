@@ -3,7 +3,7 @@
 use crate::design;
 use crate::studio::Nav;
 use eframe::egui::{self, ColorImage, Pos2, TextureHandle, TextureOptions, Vec2, vec2};
-use las_core::{Project, THUMBNAIL};
+use las_core::{PACKAGE_EXTENSION, Project, THUMBNAIL, slug};
 use std::path::Path;
 
 const CARD: Vec2 = vec2(236.0, 178.0);
@@ -41,6 +41,7 @@ impl Home {
             .into_iter()
             .flatten()
             .flatten()
+            .filter(|entry| !entry.file_name().to_string_lossy().starts_with('.'))
             .filter_map(|entry| Project::load(entry.path()).ok())
             .collect();
         projects.sort_by_key(|p| p.name.to_lowercase());
@@ -97,10 +98,15 @@ impl Home {
                 });
             });
         if let Some((i, at)) = self.menu {
-            match design::menu(ui.ctx(), at, &["Rename", "Move to Trash"]) {
+            match design::menu(ui.ctx(), at, &["Rename", "Export…", "Move to Trash"]) {
                 design::MenuChoice::Chosen(0) => {
                     self.renaming = Some((i, self.cards[i].project.name.clone()));
                     self.selecting_name = 2;
+                    self.menu = None;
+                }
+                design::MenuChoice::Chosen(1) => {
+                    let project = &self.cards[i].project;
+                    nav = pick_export(&project.name).map(|path| Nav::Export(project.clone(), path));
                     self.menu = None;
                 }
                 design::MenuChoice::Chosen(_) => {
@@ -142,6 +148,21 @@ fn open(project: &Project) -> Nav {
 pub fn pick_image() -> Option<std::path::PathBuf> {
     rfd::FileDialog::new()
         .set_title("Choose a painting")
-        .add_filter("Images", &["png", "jpg", "jpeg", "webp"])
+        .add_filter(
+            "Images and paintings",
+            &["png", "jpg", "jpeg", "webp", PACKAGE_EXTENSION],
+        )
         .pick_file()
+}
+
+/// Where to export a painting. `LAS_EXPORT_TO` skips the dialog for scripted runs.
+fn pick_export(name: &str) -> Option<std::path::PathBuf> {
+    if let Some(path) = std::env::var_os("LAS_EXPORT_TO") {
+        return Some(path.into());
+    }
+    rfd::FileDialog::new()
+        .set_title("Export painting")
+        .set_file_name(format!("{}.{PACKAGE_EXTENSION}", slug(name)))
+        .add_filter("Light and Shade painting", &[PACKAGE_EXTENSION])
+        .save_file()
 }

@@ -9,7 +9,7 @@ use crate::{design, library};
 use anyhow::{Context, Result, anyhow};
 use eframe::egui::{self, Event, Pos2};
 use eframe::egui_wgpu::RenderState;
-use las_core::Project;
+use las_core::{PACKAGE_EXTENSION, Project};
 use las_render::Mode;
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -31,6 +31,7 @@ pub enum Nav {
     /// Move a painting's folder to the Trash.
     Trash(PathBuf),
     Rename(Project, String),
+    Export(Project, PathBuf),
 }
 
 enum Screen {
@@ -251,10 +252,26 @@ impl Studio {
             }
             Nav::Light(project) => LightRoom::new(self.gpu.clone(), project, &self.scripted)
                 .map(|room| self.screen = Screen::Light(Box::new(room))),
-            Nav::New(image) => {
+            Nav::New(file) => {
                 let root = self.root.clone();
-                self.spawn(ctx, Then::Cut, "Preparing your painting…", move || {
-                    Project::create(&root, &image)
+                if file
+                    .extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case(PACKAGE_EXTENSION))
+                {
+                    self.spawn(ctx, Then::Home, "Opening your painting…", move || {
+                        Project::import(&root, &file)
+                    });
+                } else {
+                    self.spawn(ctx, Then::Cut, "Preparing your painting…", move || {
+                        Project::create(&root, &file)
+                    });
+                }
+                Ok(())
+            }
+            Nav::Export(project, path) => {
+                self.spawn(ctx, Then::Home, "Exporting your painting…", move || {
+                    project.export(&path)?;
+                    Ok(project)
                 });
                 Ok(())
             }
