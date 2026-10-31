@@ -17,6 +17,10 @@ pub struct Home {
     cards: Vec<Card>,
     /// The card whose menu is open, and where the menu sits.
     menu: Option<(usize, Pos2)>,
+    /// The card being renamed, where its box sits, and the name so far.
+    renaming: Option<(usize, Pos2, String)>,
+    /// The name box needs selecting for a few frames, until its text field exists.
+    selecting_name: u8,
 }
 
 fn thumbnail(ctx: &egui::Context, project: &Project) -> Option<TextureHandle> {
@@ -47,7 +51,12 @@ impl Home {
                 project,
             })
             .collect();
-        Self { cards, menu: None }
+        Self {
+            cards,
+            menu: None,
+            renaming: None,
+            selecting_name: 0,
+        }
     }
 
     pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Nav> {
@@ -87,13 +96,32 @@ impl Home {
                 });
             });
         if let Some((i, at)) = self.menu {
-            match design::menu(ui.ctx(), at, "Move to Trash") {
-                design::MenuChoice::Chosen => {
+            match design::menu(ui.ctx(), at, &["Rename", "Move to Trash"]) {
+                design::MenuChoice::Chosen(0) => {
+                    let left = at - vec2(design::NAME_BOX - 150.0, 0.0);
+                    self.renaming = Some((i, left, self.cards[i].project.name.clone()));
+                    self.selecting_name = 2;
+                    self.menu = None;
+                }
+                design::MenuChoice::Chosen(_) => {
                     nav = Some(Nav::Trash(self.cards[i].project.dir.clone()));
                     self.menu = None;
                 }
                 design::MenuChoice::Dismissed if !opened => self.menu = None,
                 _ => {}
+            }
+        }
+        if let Some((i, at, name)) = &mut self.renaming {
+            let opening = self.selecting_name > 0;
+            self.selecting_name = self.selecting_name.saturating_sub(1);
+            match design::name_box(ui.ctx(), *at, name, opening) {
+                design::NameChoice::Save => {
+                    let project = self.cards[*i].project.clone();
+                    nav = Some(Nav::Rename(project, name.clone()));
+                    self.renaming = None;
+                }
+                design::NameChoice::Cancel => self.renaming = None,
+                design::NameChoice::Waiting => {}
             }
         }
         nav

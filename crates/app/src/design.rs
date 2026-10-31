@@ -351,14 +351,14 @@ pub fn card(
 
 pub enum MenuChoice {
     Waiting,
-    Chosen,
+    Chosen(usize),
     Dismissed,
 }
 
-/// A small floating menu with one item.
-pub fn menu(ctx: &egui::Context, at: Pos2, item: &str) -> MenuChoice {
-    let size = vec2(150.0, ROW + 8.0);
-    let inner = egui::Area::new(egui::Id::unique("card menu"))
+/// A small floating menu.
+pub fn menu(ctx: &egui::Context, at: Pos2, items: &[&str]) -> MenuChoice {
+    let size = vec2(150.0, ROW * items.len() as f32 + 8.0);
+    let (rect, chosen) = egui::Area::new(egui::Id::unique("card menu"))
         .order(egui::Order::Foreground)
         .fixed_pos(at)
         .show(ctx, |ui| {
@@ -366,23 +366,82 @@ pub fn menu(ctx: &egui::Context, at: Pos2, item: &str) -> MenuChoice {
             ui.painter().add(squircle(rect, RADIUS * 1.25, WHITE));
             ui.painter()
                 .add(squircle_outline(rect, RADIUS * 1.25, Stroke::new(1.0, RAIL)));
-            let inset = rect.shrink(4.0);
-            let response = ui.interact(inset, ui.scope_id().with(item), Sense::click());
-            ui.painter()
-                .add(squircle(inset, RADIUS * 0.75, hover_fill(ui, &response, false)));
-            let text = inset.left_center() + vec2(8.0, 0.0);
-            ui.painter()
-                .text(text, Align2::LEFT_CENTER, item, regular(TEXT), INK);
-            (rect, response.clicked())
+            let mut chosen = None;
+            for (i, item) in items.iter().enumerate() {
+                let top = rect.min + vec2(4.0, 4.0 + ROW * i as f32);
+                let row = Rect::from_min_size(top, vec2(size.x - 8.0, ROW));
+                let response = ui.interact(row, ui.scope_id().with(item), Sense::click());
+                ui.painter()
+                    .add(squircle(row, RADIUS * 0.75, hover_fill(ui, &response, false)));
+                let text = row.left_center() + vec2(8.0, 0.0);
+                ui.painter()
+                    .text(text, Align2::LEFT_CENTER, item, regular(TEXT), INK);
+                if response.clicked() {
+                    chosen = Some(i);
+                }
+            }
+            (rect, chosen)
         })
         .inner;
-    let (rect, chosen) = inner;
-    let clicked_away =
-        ctx.input(|i| i.pointer.any_click() && i.pointer.interact_pos().is_some_and(|p| !rect.contains(p)));
-    match (chosen, clicked_away) {
-        (true, _) => MenuChoice::Chosen,
-        (_, true) => MenuChoice::Dismissed,
-        _ => MenuChoice::Waiting,
+    match chosen {
+        Some(i) => MenuChoice::Chosen(i),
+        None if clicked_away(ctx, rect) => MenuChoice::Dismissed,
+        None => MenuChoice::Waiting,
+    }
+}
+
+fn clicked_away(ctx: &egui::Context, rect: Rect) -> bool {
+    ctx.input(|i| i.pointer.any_click() && i.pointer.interact_pos().is_some_and(|p| !rect.contains(p)))
+}
+
+/// Width of the name box, and how far left of a menu it sits so it stays over its card.
+pub const NAME_BOX: f32 = 200.0;
+
+pub enum NameChoice {
+    Waiting,
+    Save,
+    Cancel,
+}
+
+/// A small floating box for typing a name, opening with the old one selected so typing
+/// replaces it. Return or clicking away saves, Esc cancels.
+pub fn name_box(ctx: &egui::Context, at: Pos2, text: &mut String, opening: bool) -> NameChoice {
+    let size = vec2(NAME_BOX, ROW + 8.0);
+    let (rect, response) = egui::Area::new(egui::Id::unique("name box"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(at)
+        .show(ctx, |ui| {
+            let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+            ui.painter().add(squircle(rect, RADIUS, WHITE));
+            ui.painter()
+                .add(squircle_outline(rect, RADIUS, Stroke::new(1.5, INK)));
+            let inner = rect.shrink2(vec2(10.0, 4.0));
+            let field = egui::TextEdit::singleline(text)
+                .frame(egui::Frame::NONE)
+                .font(regular(TEXT))
+                .align(Align2::LEFT_CENTER)
+                .min_size(inner.size())
+                .desired_width(inner.width());
+            let response = ui.put(inner, field);
+            response.request_focus();
+            if opening && let Some(mut state) = egui::TextEdit::load_state(ctx, response.id) {
+                let all = egui::text::CCursorRange::two(
+                    egui::text::CCursor::new(0),
+                    egui::text::CCursor::new(text.chars().count()),
+                );
+                state.cursor.set_char_range(Some(all));
+                state.store(ctx, response.id);
+            }
+            (rect, response)
+        })
+        .inner;
+    let (enter, escape) = ctx.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
+    if escape {
+        NameChoice::Cancel
+    } else if enter || response.lost_focus() || clicked_away(ctx, rect) {
+        NameChoice::Save
+    } else {
+        NameChoice::Waiting
     }
 }
 

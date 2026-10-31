@@ -30,6 +30,7 @@ pub enum Nav {
     BakeHome(Project),
     /// Move a painting's folder to the Trash.
     Trash(PathBuf),
+    Rename(Project, String),
 }
 
 enum Screen {
@@ -128,7 +129,11 @@ impl Scripted {
             input.extend(drag.iter().map(|p| vec![Event::PointerMoved(*p)]));
             input.push_back(vec![button(*last, false)]);
         }
-        // LAS_KEYS: shortcuts after everything else, such as `cmd+z;ctrl+shift+z`.
+        // LAS_TEXT: typing, after the input above.
+        if let Some(text) = var("LAS_TEXT") {
+            input.push_back(vec![Event::Text(text)]);
+        }
+        // LAS_KEYS: shortcuts after everything else, such as `cmd+z;ctrl+shift+z;enter`.
         for shortcut in var("LAS_KEYS")
             .unwrap_or_default()
             .split(';')
@@ -142,8 +147,13 @@ impl Scripted {
                 command: has("cmd"),
                 ..Default::default()
             };
+            let name = match () {
+                _ if has("enter") => egui::Key::Enter,
+                _ if has("esc") => egui::Key::Escape,
+                _ => egui::Key::Z,
+            };
             let key = |pressed| Event::Key {
-                key: egui::Key::Z,
+                key: name,
                 physical_key: None,
                 pressed,
                 repeat: false,
@@ -257,6 +267,11 @@ impl Studio {
                     .with_context(|| format!("moving {} to the Trash", dir.display()));
                 self.screen = Screen::Home(Home::new(ctx, &self.root));
                 trashed
+            }
+            Nav::Rename(mut project, name) => {
+                let renamed = project.rename(&name);
+                self.screen = Screen::Home(Home::new(ctx, &self.root));
+                renamed
             }
             Nav::BakeHome(project) => {
                 self.bake(ctx, Then::Home, project);

@@ -3,7 +3,7 @@
 mod bake;
 mod paint;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use image::imageops::{self, FilterType};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -121,6 +121,26 @@ impl Project {
             .with_context(|| format!("writing {}", path.display()))?;
         self.layers[piece].normal = path;
         self.save()
+    }
+
+    /// Change the name shown for this painting. Only that field is rewritten, so anything
+    /// else in the file survives, and the folder stays where it is.
+    pub fn rename(&mut self, name: &str) -> Result<()> {
+        let name = name.trim();
+        if name.is_empty() {
+            bail!("a painting needs a name");
+        }
+        let path = self.dir.join("project.json");
+        let text = std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+        let mut file: serde_json::Value =
+            serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
+        file["name"] = name.into();
+        let temp = self.dir.join("project.json.tmp");
+        std::fs::write(&temp, serde_json::to_string_pretty(&file)? + "\n")
+            .with_context(|| format!("writing {}", temp.display()))?;
+        std::fs::rename(&temp, &path).with_context(|| format!("replacing {}", path.display()))?;
+        self.name = name.to_owned();
+        Ok(())
     }
 
     /// Whether the source is too small to stay sharp on a large canvas.
@@ -368,6 +388,25 @@ mod tests {
             .push(vec![[4.0, 4.0], [6.0, 4.0], [6.0, 6.0], [4.0, 6.0]]);
         assert!(!cut.contains([5.0, 5.0]));
         assert!(cut.contains([2.0, 2.0]));
+    }
+
+    #[test]
+    fn renaming_keeps_everything_else_in_the_file() {
+        let dir = std::env::temp_dir().join(format!("las-rename-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let text = r#"{ "name": "Old", "width": 4, "height": 4,
+            "layers": [{ "name": "Leaf", "z": 0, "x": 0, "y": 0, "w": 1, "h": 1,
+                "color": "c.png", "normal": "n.png", "pivot": [1, 2] }] }"#;
+        std::fs::write(dir.join("project.json"), text).unwrap();
+
+        let mut project = Project::load(&dir).unwrap();
+        project.rename("  New name ").unwrap();
+        assert_eq!(project.name, "New name");
+        assert_eq!(Project::load(&dir).unwrap().name, "New name");
+        let saved = std::fs::read_to_string(dir.join("project.json")).unwrap();
+        assert!(saved.contains("pivot"), "unknown fields survive");
+        assert!(project.rename("   ").is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

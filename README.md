@@ -23,7 +23,7 @@ tracked by git.
 
 ## Using it
 
-Drop a PNG, JPEG or WebP anywhere on the home page, or click New painting.
+Drop a PNG, JPEG or WebP anywhere on the home page, or click New painting. Each card's … menu renames a painting or moves it to the Trash.
 
 Two fingers on a trackpad pan, and a pinch or a mouse wheel zooms. Both work on every canvas.
 
