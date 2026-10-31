@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 pub const WHITE: Color32 = Color32::WHITE;
 /// The window behind everything. Controls and the canvas sit on white squircles above it.
-pub const SHELL: Color32 = Color32::from_rgb(236, 236, 233);
+pub const SHELL: Color32 = Color32::from_rgb(246, 246, 244);
 pub const INK: Color32 = Color32::from_rgb(17, 17, 17);
 pub const MUTED: Color32 = Color32::from_rgb(138, 138, 134);
 /// Hover and selection, the only grey fill in the app.
