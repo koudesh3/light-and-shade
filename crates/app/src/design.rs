@@ -41,6 +41,8 @@ const TEXT: f32 = 13.0;
 /// How far a row's highlight reaches past its text.
 const ROW_BLEED: f32 = 8.0;
 const HEADING: f32 = 12.0;
+const HEADING_ROW: f32 = 16.0;
+const HEADING_LIFT: f32 = 3.0;
 
 fn regular(size: f32) -> FontId {
     FontId::new(size, FontFamily::Proportional)
@@ -341,10 +343,12 @@ fn one_line(ui: &Ui, text: &str, font: FontId, color: Color32, width: f32) -> Ar
 
 /// A quiet label above a group of controls.
 pub fn heading(ui: &mut Ui, text: &str) {
-    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), HEADING_ROW), Sense::hover());
     let galley = one_line(ui, text, medium(HEADING), MUTED, rect.width());
-    let top = rect.center().y - galley.size().y / 2.0;
-    ui.painter().galley(pos2(rect.left(), top), galley, MUTED);
+    // Font metrics leave space above the capitals, so lift the text by that much. That
+    // makes its top inset match the card's side inset.
+    ui.painter()
+        .galley(rect.left_top() - vec2(0.0, HEADING_LIFT), galley, MUTED);
 }
 
 /// Air between groups.
