@@ -19,7 +19,7 @@ pub const WASH: Color32 = Color32::from_rgb(242, 242, 240);
 pub const RAIL: Color32 = Color32::from_rgb(228, 228, 225);
 
 /// The strip above the toolbar, holding the window buttons and the back chevron.
-const STRIP: f32 = 42.0;
+const STRIP: f32 = 32.0;
 /// How far the window buttons sit from the left of the window, on macOS.
 pub const WINDOW_BUTTONS_LEFT: f32 = 16.0;
 /// Where the middle of that row sits, from the top of the window.
