@@ -245,8 +245,7 @@ impl CutBoard {
                 design::tray(ui, |ui| {
                     let finished = !self.project.cuts.is_empty() || self.draft.len() >= 3;
                     if finished && design::primary_button(ui, "Done").clicked() {
-                        self.close_draft();
-                        nav = Some(Nav::Bake(self.project.clone()));
+                        nav = Some(self.finish());
                     }
                 });
             });
@@ -482,6 +481,16 @@ impl CutBoard {
         }
         if let Some(error) = &self.error {
             design::toast(ui.ctx(), error);
+        }
+    }
+
+    /// Go to the light room, rebuilding the layers only if the cuts changed.
+    fn finish(&mut self) -> Nav {
+        self.close_draft();
+        if self.dirty {
+            Nav::Bake(self.project.clone())
+        } else {
+            Nav::Light(self.project.clone())
         }
     }
 
