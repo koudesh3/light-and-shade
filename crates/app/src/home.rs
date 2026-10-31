@@ -78,7 +78,9 @@ impl Home {
                 egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
                         ui.spacing_mut().item_spacing = vec2(22.0, 26.0);
-                        if design::new_card(ui, CARD, "New painting", "Drop an image anywhere").clicked() {
+                        if design::new_card(ui, CARD, "New painting", "Drop an image, or import a painting")
+                            .clicked()
+                        {
                             nav = pick_image().map(Nav::New);
                         }
                         for (i, card) in self.cards.iter().enumerate() {

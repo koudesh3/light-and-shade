@@ -366,7 +366,7 @@ impl Studio {
             (!i.raw.hovered_files.is_empty(), dropped)
         });
         if hovering {
-            design::drop_veil(ctx, "Drop to start a painting");
+            design::drop_veil(ctx, "Drop to add a painting");
         }
         dropped.map(Nav::New)
     }
