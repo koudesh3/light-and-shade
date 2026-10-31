@@ -18,8 +18,9 @@ pub const MUTED: Color32 = Color32::from_rgb(138, 138, 134);
 pub const WASH: Color32 = Color32::from_rgb(242, 242, 240);
 pub const RAIL: Color32 = Color32::from_rgb(228, 228, 225);
 
-/// A strip above the toolbar for the window buttons, which float there on macOS.
-const WINDOW_BUTTONS: f32 = if cfg!(target_os = "macos") { 28.0 } else { 0.0 };
+/// A strip above the toolbar for the window buttons, which float there on macOS. The
+/// buttons end about 22 points down, so this leaves the usual gap beneath them.
+const WINDOW_BUTTONS: f32 = if cfg!(target_os = "macos") { 36.0 } else { 0.0 };
 pub const RADIUS: f32 = 8.0;
 /// The columns beside a canvas, and the cards inside them.
 pub const SIDEBAR: f32 = 216.0;
