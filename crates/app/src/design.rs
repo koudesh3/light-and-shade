@@ -23,6 +23,8 @@ pub const RAIL: Color32 = Color32::from_rgb(228, 228, 225);
 const WINDOW_BUTTONS: f32 = if cfg!(target_os = "macos") { 36.0 } else { 0.0 };
 /// Where the middle of the window buttons sits, from the top of the window.
 const TITLE_CENTRE: f32 = 14.0;
+/// Where the title starts, just past the window buttons.
+const TITLE_LEFT: f32 = 78.0;
 pub const RADIUS: f32 = 8.0;
 /// The columns beside a canvas, and the cards inside them.
 pub const SIDEBAR: f32 = 216.0;
@@ -264,11 +266,11 @@ pub fn top_bar<R>(ui: &mut Ui, title: &str, contents: impl FnOnce(&mut Ui) -> R)
         .show_separator_line(false)
         .frame(frame)
         .show(ui, |ui| {
-            // The window's own title is hidden, so draw it level with the window buttons.
+            // The window's own title is hidden, so draw it beside the window buttons.
             if WINDOW_BUTTONS > 0.0 {
                 let galley = one_line(ui, title, regular(TEXT), MUTED, 420.0);
                 let top = ui.max_rect().top() - WINDOW_BUTTONS + TITLE_CENTRE - galley.size().y / 2.0;
-                let at = pos2(ui.max_rect().center().x - galley.size().x / 2.0, top);
+                let at = pos2(TITLE_LEFT, top);
                 let painter = ui.painter().with_clip_rect(ui.ctx().content_rect());
                 painter.galley(at, galley, MUTED);
             }
