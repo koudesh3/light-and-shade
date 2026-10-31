@@ -34,6 +34,8 @@ pub struct LightRoom {
     orbit: bool,
     view: View,
     ball: Ball,
+    /// Normals changed, so the home page cover needs redrawing.
+    painted: bool,
     /// Dragging pans the painting, for when there's no keyboard to hold Space on.
     moving: bool,
     /// Present while painting normals.
@@ -72,6 +74,7 @@ impl LightRoom {
                 ..View::default()
             },
             ball: Ball::default(),
+            painted: false,
             moving: false,
             painter: None,
             error: None,
@@ -103,6 +106,11 @@ impl LightRoom {
         let mut nav = None;
         ui.horizontal_centered(|ui| {
             if design::button(ui, "‹ Paintings").clicked() {
+                if self.painted
+                    && let Err(e) = self.project.write_thumbnail()
+                {
+                    self.error = Some(format!("{e:#}"));
+                }
                 nav = Some(Nav::Home);
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -164,7 +172,10 @@ impl LightRoom {
 
     fn after_paint(&mut self, outcome: anyhow::Result<bool>) {
         match outcome {
-            Ok(true) => self.upload_painted(),
+            Ok(true) => {
+                self.painted = true;
+                self.upload_painted();
+            }
             Ok(false) => {}
             Err(e) => self.error = Some(format!("{e:#}")),
         }

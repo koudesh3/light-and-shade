@@ -1,6 +1,6 @@
 //! Turning a dropped image into a project, and a project's cuts into layers.
 
-use crate::{Cut, Layer, NormalMap, Project};
+use crate::{Cut, Layer, MapKind, NormalMap, Project, load_mips};
 use anyhow::{Context, Result, bail};
 use image::codecs::png::{CompressionType, FilterType as PngFilter, PngEncoder};
 use image::imageops::{self, FilterType};
@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 const SOURCE: &str = "source/original.png";
 const FLAT_NORMAL: &str = "layers/flat_normal.png";
-pub const THUMBNAIL: &str = "cover.png";
+pub const THUMBNAIL: &str = "cover-split.png";
 const THUMBNAIL_SIDE: u32 = 560;
 /// Transparent margin around each layer, so filtering has room to fade out.
 const MARGIN: f32 = 3.0;
@@ -185,20 +185,24 @@ impl Project {
         let [left, top, right, bottom] = bounds;
         let scale = THUMBNAIL_SIDE as f32 / (right - left).max(bottom - top).max(1.0);
         let size = |n: f32| ((n * scale).round() as u32).max(1);
-        let mut canvas = RgbaImage::new(size(right - left), size(bottom - top));
+        let mut color = RgbaImage::new(size(right - left), size(bottom - top));
+        let mut normals = color.clone();
         for layer in &self.layers {
+            let (w, h) = (size(layer.w as f32), size(layer.h as f32));
             let image = image::open(self.dir.join(&layer.color))?.into_rgba8();
-            let piece = imageops::resize(
-                &image,
-                size(layer.w as f32),
-                size(layer.h as f32),
-                FilterType::Triangle,
-            );
+            let piece = imageops::resize(&image, w, h, FilterType::Triangle);
+            let map = load_mips(&self.dir.join(&layer.normal), MapKind::Normal)?.remove(0);
+            let map = RgbaImage::from_raw(map.width, map.height, map.rgba).context("reading a normal map")?;
+            let mut shaped = imageops::resize(&map, w, h, FilterType::Triangle);
+            for (normal, painted) in shaped.pixels_mut().zip(piece.pixels()) {
+                normal[3] = painted[3];
+            }
             let x = ((layer.x - left) * scale).round() as i64;
             let y = ((layer.y - top) * scale).round() as i64;
-            imageops::overlay(&mut canvas, &piece, x, y);
+            imageops::overlay(&mut color, &piece, x, y);
+            imageops::overlay(&mut normals, &shaped, x, y);
         }
-        Ok(canvas)
+        Ok(split_diagonally(&color, &normals))
     }
 
     /// The area the layers cover, as `[left, top, right, bottom]`.
@@ -217,6 +221,24 @@ impl Project {
     pub fn write_thumbnail(&self) -> Result<()> {
         save_png(&self.thumbnail()?, &self.dir.join(THUMBNAIL))
     }
+}
+
+/// The top-left half from `first` and the bottom-right half from `second`, divided by a line
+/// from the bottom-left corner to the top-right, with a soft pixel along it.
+fn split_diagonally(first: &RgbaImage, second: &RgbaImage) -> RgbaImage {
+    let (w, h) = (first.width() as f32, first.height() as f32);
+    let mut out = first.clone();
+    let length = w.hypot(h);
+    for (x, y, pixel) in out.enumerate_pixels_mut() {
+        // Distance past the line, in pixels: negative on the first image's side.
+        let past = ((x as f32 + 0.5) * h + (y as f32 + 0.5) * w - w * h) / length;
+        let mix = (past + 0.5).clamp(0.0, 1.0);
+        let other = second.get_pixel(x, y);
+        for c in 0..4 {
+            pixel[c] = (pixel[c] as f32 * (1.0 - mix) + other[c] as f32 * mix).round() as u8;
+        }
+    }
+    out
 }
 
 /// Copy a polygon out of the image, returning its position and pixels. Colour under
@@ -366,6 +388,19 @@ mod tests {
                 .ends_with("little-fern-2")
         );
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn covers_split_from_bottom_left_to_top_right() {
+        let red = RgbaImage::from_pixel(100, 60, image::Rgba([255, 0, 0, 255]));
+        let blue = RgbaImage::from_pixel(100, 60, image::Rgba([0, 0, 255, 255]));
+        let split = split_diagonally(&red, &blue);
+        assert_eq!(split.get_pixel(5, 5)[0], 255, "the painting is top left");
+        assert_eq!(split.get_pixel(94, 54)[2], 255, "the normals are bottom right");
+        assert!(
+            split.get_pixel(50, 29)[0] > 0 && split.get_pixel(50, 31)[2] > 0,
+            "the line runs through the middle"
+        );
     }
 
     #[test]
