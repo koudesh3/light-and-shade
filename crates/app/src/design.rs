@@ -135,7 +135,7 @@ pub fn canvas_frame(panel_on_right: bool) -> egui::Frame {
     shell().inner_margin(egui::Margin {
         left: 0,
         right: if panel_on_right { 0 } else { PAGE },
-        top: 2,
+        top: PAGE,
         bottom: PAGE,
     })
 }
@@ -257,7 +257,7 @@ pub fn top_bar<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> R {
         bottom: 0,
     });
     egui::Panel::top("top bar")
-        .exact_size(WINDOW_BUTTONS + 44.0)
+        .exact_size(WINDOW_BUTTONS + ROW + TRAY_EDGE * 2.0)
         .show_separator_line(false)
         .frame(frame)
         .show(ui, contents)
@@ -284,7 +284,7 @@ pub fn side_panel_with_gutter<R>(
         .frame(shell().inner_margin(egui::Margin {
             left: PAGE,
             right: PAGE - gutter,
-            top: 2,
+            top: PAGE,
             bottom: PAGE,
         }))
         .show(ui, contents)
@@ -340,7 +340,8 @@ pub fn heading(ui: &mut Ui, text: &str) {
 
 /// Air between groups.
 pub fn gap(ui: &mut Ui) {
-    ui.add_space(8.0);
+    // With the item spacing around it, this makes the same gap as everywhere else.
+    ui.add_space(PAGE as f32 - GAP);
 }
 
 fn hover_fill(ui: &Ui, response: &Response, selected: bool) -> Color32 {
