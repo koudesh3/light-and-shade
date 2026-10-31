@@ -272,11 +272,14 @@ impl Light {
     }
 }
 
-/// How the painting sits in a viewport. `pan` is in target pixels, `zoom` is relative to fit.
+/// How the painting sits in a viewport. `pan` is in target pixels, `zoom` is relative to fit,
+/// and `frame` is the area to fit, as `[left, top, right, bottom]` in painting pixels. Without
+/// one, the whole painting fits.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct View {
     pub zoom: f32,
     pub pan: [f32; 2],
+    pub frame: Option<[f32; 4]>,
 }
 
 impl Default for View {
@@ -284,6 +287,7 @@ impl Default for View {
         Self {
             zoom: 1.0,
             pan: [0.0, 0.0],
+            frame: None,
         }
     }
 }
@@ -291,17 +295,31 @@ impl Default for View {
 impl View {
     const PAD: f32 = 0.92;
 
+    /// The view that fits an area of the painting.
+    pub fn framing(frame: Option<[f32; 4]>) -> Self {
+        Self {
+            frame,
+            ..Self::default()
+        }
+    }
+
+    fn fitted(&self, painting: [f32; 2]) -> [f32; 4] {
+        self.frame.unwrap_or([0.0, 0.0, painting[0], painting[1]])
+    }
+
     /// Target pixels per painting pixel.
     pub fn scale(&self, target: [f32; 2], painting: [f32; 2]) -> f32 {
-        (target[0] / painting[0]).min(target[1] / painting[1]) * Self::PAD * self.zoom
+        let [left, top, right, bottom] = self.fitted(painting);
+        (target[0] / (right - left).max(1.0)).min(target[1] / (bottom - top).max(1.0)) * Self::PAD * self.zoom
     }
 
     /// Painting origin in target pixels.
     pub fn origin(&self, target: [f32; 2], painting: [f32; 2]) -> [f32; 2] {
         let s = self.scale(target, painting);
+        let [left, top, right, bottom] = self.fitted(painting);
         [
-            (target[0] - painting[0] * s) / 2.0 + self.pan[0],
-            (target[1] - painting[1] * s) / 2.0 + self.pan[1],
+            target[0] / 2.0 - (left + right) / 2.0 * s + self.pan[0],
+            target[1] / 2.0 - (top + bottom) / 2.0 * s + self.pan[1],
         ]
     }
 
@@ -409,6 +427,16 @@ mod tests {
         assert!(saved.contains("pivot"), "unknown fields survive");
         assert!(project.rename("   ").is_err());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_framed_view_centres_and_fills_with_its_area() {
+        let (target, painting) = ([1000.0, 1000.0], [3000.0, 4000.0]);
+        let view = View::framing(Some([1000.0, 2000.0, 1500.0, 2500.0]));
+        let (s, o) = (view.scale(target, painting), view.origin(target, painting));
+        assert!((s - 1.84).abs() < 0.001, "{s}");
+        assert!((o[0] + 1250.0 * s - 500.0).abs() < 0.01);
+        assert!((o[1] + 2250.0 * s - 500.0).abs() < 0.01);
     }
 
     #[test]

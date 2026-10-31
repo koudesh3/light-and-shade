@@ -206,7 +206,7 @@ impl Project {
     }
 
     /// The area the layers cover, as `[left, top, right, bottom]`.
-    fn layer_bounds(&self) -> Option<[f32; 4]> {
+    pub fn layer_bounds(&self) -> Option<[f32; 4]> {
         self.layers.iter().fold(None, |bounds, l| {
             let [left, top, right, bottom] = bounds.unwrap_or([f32::MAX, f32::MAX, f32::MIN, f32::MIN]);
             Some([

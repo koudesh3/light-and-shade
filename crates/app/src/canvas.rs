@@ -112,6 +112,7 @@ mod tests {
         let view = View {
             zoom: 1.5,
             pan: [-492.0, -427.0],
+            frame: Some([400.0, 900.0, 2600.0, 3300.0]),
         };
         for ppp in [1.0, 2.0] {
             let placed = Placement::at_scale(ppp, &view, rect, painting);

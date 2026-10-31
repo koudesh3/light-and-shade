@@ -50,6 +50,11 @@ impl LightRoom {
         }
         let mut renderer = Renderer::new(&gpu.device);
         renderer.load(&gpu.device, &gpu.queue, &project)?;
+        // Fit the pieces rather than the photo they came from, so they fill the canvas.
+        let view = View {
+            zoom: scripted.zoom.unwrap_or(1.0),
+            ..View::framing(project.layer_bounds())
+        };
         Ok(Self {
             visible: vec![true; project.layers.len()],
             gpu,
@@ -69,10 +74,7 @@ impl LightRoom {
             normal_opacity: 0.5,
             dark_paper: false,
             orbit: false,
-            view: View {
-                zoom: scripted.zoom.unwrap_or(1.0),
-                ..View::default()
-            },
+            view,
             ball: Ball::default(),
             painted: false,
             moving: false,
@@ -83,7 +85,7 @@ impl LightRoom {
 
     pub fn command(&mut self, command: Command) {
         match command {
-            Command::Fit => self.view = View::default(),
+            Command::Fit => self.view = View::framing(self.project.layer_bounds()),
             Command::Lit => self.mode = Mode::Lit,
             Command::Normals => self.mode = Mode::Normals,
             Command::Original => self.mode = Mode::Original,
@@ -115,7 +117,7 @@ impl LightRoom {
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if design::button(ui, &format!("{:.0}%", self.view.zoom * 100.0)).clicked() {
-                    self.view = View::default();
+                    self.view = View::framing(self.project.layer_bounds());
                 }
                 if design::toggle_button(ui, "Move", self.moving).clicked() {
                     self.moving = !self.moving;
@@ -249,7 +251,7 @@ impl LightRoom {
             self.orbit = false;
         }
         if response.double_clicked() && self.painter.is_none() {
-            self.view = View::default();
+            self.view = View::framing(self.project.layer_bounds());
         }
         if let Some(p) = response.hover_pos() {
             crate::canvas::navigate(ui, &mut self.view, p, rect, painting);
@@ -348,7 +350,7 @@ impl LightRoom {
                 }
             }
             if i.key_pressed(Key::F) {
-                self.view = View::default();
+                self.view = View::framing(self.project.layer_bounds());
             }
             if i.key_pressed(Key::O) {
                 self.orbit = !self.orbit;
