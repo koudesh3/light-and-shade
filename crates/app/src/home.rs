@@ -84,8 +84,7 @@ impl Home {
                             let image = card.thumbnail.as_ref().map(|t| (t.id(), t.size_vec2()));
                             let menu_open = self.menu.is_some_and(|(open, _)| open == i);
                             let name = &card.project.name;
-                            let response =
-                                design::card(ui, CARD, image, name, &note(&card.project), menu_open);
+                            let response = design::card(ui, CARD, image, name, menu_open);
                             titles.push(response.title);
                             if let Some(at) = response.menu {
                                 self.menu = if menu_open { None } else { Some((i, at)) };
@@ -137,14 +136,6 @@ fn open(project: &Project) -> Nav {
         Nav::Cut(project.clone())
     } else {
         Nav::Light(project.clone())
-    }
-}
-
-fn note(project: &Project) -> String {
-    match project.layers.len() {
-        0 => "Not cut yet".into(),
-        1 => "1 layer".into(),
-        n => format!("{n} layers"),
     }
 }
 

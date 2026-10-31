@@ -304,13 +304,12 @@ pub struct CardResponse {
     pub title: Rect,
 }
 
-/// A project card: an image on a quiet tile, with a name and a note below.
+/// A project card: an image on a quiet tile, with a name below.
 pub fn card(
     ui: &mut Ui,
     size: Vec2,
     image: Option<(egui::TextureId, Vec2)>,
     name: &str,
-    note: &str,
     menu_open: bool,
 ) -> CardResponse {
     const MENU_BUTTON: f32 = 26.0;
@@ -330,8 +329,6 @@ pub fn card(
     let left = tile.left() + 2.0;
     let name = one_line(ui, name, medium(TEXT), INK, size.x - 4.0);
     ui.painter().galley(pos2(left, tile.bottom() + 8.0), name, INK);
-    let note = one_line(ui, note, regular(HEADING), MUTED, size.x - 4.0);
-    ui.painter().galley(pos2(left, tile.bottom() + 26.0), note, MUTED);
 
     let mut menu = None;
     if hovered || menu_open {
