@@ -10,6 +10,8 @@ use std::ops::RangeInclusive;
 use std::sync::Arc;
 
 pub const WHITE: Color32 = Color32::WHITE;
+/// The window behind everything. Controls and the canvas sit on white squircles above it.
+pub const SHELL: Color32 = Color32::from_rgb(236, 236, 233);
 pub const INK: Color32 = Color32::from_rgb(17, 17, 17);
 pub const MUTED: Color32 = Color32::from_rgb(138, 138, 134);
 /// Hover and selection, the only grey fill in the app.
@@ -22,6 +24,8 @@ pub const RADIUS: f32 = 8.0;
 pub const ROW: f32 = 28.0;
 pub const GAP: f32 = 6.0;
 pub const PAGE: i8 = 14;
+/// How far a tray reaches past the controls on it.
+const TRAY_EDGE: f32 = 3.0;
 
 const TEXT: f32 = 13.0;
 const HEADING: f32 = 12.0;
@@ -60,7 +64,7 @@ pub fn apply(ctx: &egui::Context) {
 
     ctx.set_theme(egui::Theme::Light);
     let mut v = egui::Visuals::light();
-    v.panel_fill = WHITE;
+    v.panel_fill = SHELL;
     v.window_fill = WHITE;
     v.window_stroke = Stroke::new(1.0, RAIL);
     v.window_corner_radius = egui::CornerRadius::same(RADIUS as u8);
@@ -76,6 +80,11 @@ pub fn apply(ctx: &egui::Context) {
     });
 }
 
+/// Line segments in each corner of a squircle.
+const CORNER_STEPS: usize = 12;
+/// Corner radius of the big surfaces.
+const SURFACE: f32 = RADIUS * 1.75;
+
 /// A superellipse-cornered rectangle. Unlike a circular corner, its curve eases
 /// into the straight edges, which is what makes it read as soft rather than round.
 pub fn squircle(rect: Rect, radius: f32, fill: Color32) -> Shape {
@@ -88,7 +97,7 @@ pub fn squircle_outline(rect: Rect, radius: f32, stroke: Stroke) -> Shape {
 }
 
 fn squircle_points(rect: Rect, radius: f32) -> Vec<Pos2> {
-    const STEPS: usize = 12;
+    const STEPS: usize = CORNER_STEPS;
     const POWER: f32 = 2.0 / 4.5;
     // A superellipse looks tighter than a circle of the same size, so reach further along the edges.
     let r = (radius * 1.5).min(rect.width() / 2.0).min(rect.height() / 2.0);
@@ -111,22 +120,87 @@ fn squircle_points(rect: Rect, radius: f32) -> Vec<Pos2> {
     points
 }
 
-fn surface(x: i8, y: i8) -> egui::Frame {
-    egui::Frame::new()
-        .fill(WHITE)
-        .inner_margin(egui::Margin::symmetric(x, y))
+/// A frame for what sits directly on the window.
+pub fn shell() -> egui::Frame {
+    egui::Frame::new().fill(SHELL)
+}
+
+/// The frame around a canvas: the space left by the side panels, down to the window's edge.
+pub fn canvas_frame(panel_on_right: bool) -> egui::Frame {
+    shell().inner_margin(egui::Margin {
+        left: 0,
+        right: if panel_on_right { 0 } else { PAGE },
+        top: 2,
+        bottom: PAGE,
+    })
+}
+
+/// Paint a canvas's white surface.
+pub fn canvas_surface(ui: &Ui, rect: Rect) {
+    ui.painter().add(squircle(rect, SURFACE, WHITE));
+}
+
+/// Round off a canvas by covering its corners, over whatever has been drawn on it.
+pub fn canvas_corners(ui: &Ui, rect: Rect) {
+    let outer = [
+        rect.right_top(),
+        rect.right_bottom(),
+        rect.left_bottom(),
+        rect.left_top(),
+    ];
+    let points = squircle_points(rect, SURFACE);
+    for (corner, arc) in outer.iter().zip(points.chunks(CORNER_STEPS + 1)) {
+        let mut mesh = egui::Mesh::default();
+        mesh.colored_vertex(*corner, SHELL);
+        arc.iter().for_each(|p| mesh.colored_vertex(*p, SHELL));
+        for i in 1..arc.len() as u32 {
+            mesh.add_triangle(0, i, i + 1);
+        }
+        ui.painter().add(Shape::mesh(mesh));
+    }
+    // The covers have hard edges, so a thin line softens where they meet the canvas.
+    ui.painter()
+        .add(Shape::closed_line(points, Stroke::new(1.0, SHELL)));
+}
+
+/// A group of controls on its own white squircle, as wide as the space it's in.
+pub fn group<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> R {
+    let background = ui.painter().add(Shape::Noop);
+    let inner = egui::Frame::new()
+        .inner_margin(egui::Margin::same(12))
+        .show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            contents(ui)
+        });
+    ui.painter()
+        .set(background, squircle(inner.response.rect, SURFACE, WHITE));
+    inner.inner
+}
+
+/// A row of toolbar controls on a small white squircle, hugging what's inside.
+pub fn tray<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> R {
+    let background = ui.painter().add(Shape::Noop);
+    let inner = ui.scope(contents);
+    // A tray can fill its whole row, so its height comes from the controls, not the row.
+    let rect = Rect::from_center_size(
+        inner.response.rect.center(),
+        vec2(inner.response.rect.width(), ROW),
+    );
+    let rect = rect.expand(TRAY_EDGE);
+    ui.painter().set(background, squircle(rect, RADIUS * 1.25, WHITE));
+    inner.inner
 }
 
 /// The bar along the top of a screen.
 pub fn top_bar<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> R {
-    let frame = egui::Frame::new().fill(WHITE).inner_margin(egui::Margin {
-        left: PAGE,
-        right: PAGE,
+    let frame = shell().inner_margin(egui::Margin {
+        left: PAGE + TRAY_EDGE as i8,
+        right: PAGE + TRAY_EDGE as i8,
         top: WINDOW_BUTTONS as i8,
         bottom: 0,
     });
     egui::Panel::top("top bar")
-        .exact_size(WINDOW_BUTTONS + 40.0)
+        .exact_size(WINDOW_BUTTONS + 44.0)
         .show_separator_line(false)
         .frame(frame)
         .show(ui, contents)
@@ -135,11 +209,27 @@ pub fn top_bar<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> R {
 
 /// A fixed column beside the canvas.
 pub fn side_panel<R>(panel: egui::Panel, width: f32, ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> R {
+    side_panel_with_gutter(panel, width, 0, ui, contents)
+}
+
+/// A fixed column with `gutter` points of its right margin given to its contents.
+pub fn side_panel_with_gutter<R>(
+    panel: egui::Panel,
+    width: f32,
+    gutter: i8,
+    ui: &mut Ui,
+    contents: impl FnOnce(&mut Ui) -> R,
+) -> R {
     panel
         .exact_size(width)
         .resizable(false)
         .show_separator_line(false)
-        .frame(surface(PAGE, 4))
+        .frame(shell().inner_margin(egui::Margin {
+            left: PAGE,
+            right: PAGE - gutter,
+            top: 2,
+            bottom: PAGE,
+        }))
         .show(ui, contents)
         .inner
 }
@@ -193,7 +283,7 @@ pub fn heading(ui: &mut Ui, text: &str) {
 
 /// Air between groups.
 pub fn gap(ui: &mut Ui) {
-    ui.add_space(18.0);
+    ui.add_space(8.0);
 }
 
 fn hover_fill(ui: &Ui, response: &Response, selected: bool) -> Color32 {
@@ -285,6 +375,8 @@ pub fn tabs(ui: &mut Ui, center: Pos2, labels: &[&str], selected: usize) -> Opti
         .collect();
     let total = widths.iter().sum::<f32>() + GAP * (labels.len() - 1) as f32;
     let mut x = center.x - total / 2.0;
+    let tray = Rect::from_center_size(center, vec2(total, ROW)).expand(TRAY_EDGE);
+    ui.painter().add(squircle(tray, RADIUS * 1.25, WHITE));
     let mut clicked = None;
     for (i, (label, width)) in labels.iter().zip(widths).enumerate() {
         let rect = Rect::from_min_size(pos2(x, center.y - ROW / 2.0), vec2(width, ROW));
@@ -318,7 +410,7 @@ pub fn card(
     let hovered = ui.rect_contains_pointer(rect);
     let t = ui.ctx().animate_bool_with_time(open.id, hovered, 0.1);
     ui.painter()
-        .add(squircle(tile, RADIUS * 1.5, WASH.lerp_to_gamma(RAIL, t)));
+        .add(squircle(tile, RADIUS * 1.5, WHITE.lerp_to_gamma(WASH, t)));
     if let Some((id, image_size)) = image {
         let room = tile.shrink(14.0).size();
         let scale = (room.x / image_size.x).min(room.y / image_size.y);
@@ -335,7 +427,7 @@ pub fn card(
         let top_right = tile.right_top() + vec2(-8.0 - MENU_BUTTON, 8.0);
         let button = Rect::from_min_size(top_right, Vec2::splat(MENU_BUTTON));
         let response = ui.interact(button, open.id.with("menu"), Sense::click());
-        ui.painter().add(squircle(button, RADIUS * 0.75, WHITE));
+        ui.painter().add(squircle(button, RADIUS * 0.75, WASH));
         for dx in [-5.0, 0.0, 5.0] {
             ui.painter()
                 .circle_filled(button.center() + vec2(dx, 0.0), 1.5, INK);

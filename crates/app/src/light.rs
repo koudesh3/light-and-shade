@@ -11,6 +11,9 @@ use eframe::egui_wgpu::RenderState;
 use las_core::{Light, Project, View};
 use las_render::{Frame, Mode, Renderer, TARGET_FORMAT};
 
+/// Room beside the right panel's cards for its scroll bar.
+const GUTTER: f32 = 8.0;
+
 struct Target {
     view: wgpu::TextureView,
     id: TextureId,
@@ -107,53 +110,60 @@ impl LightRoom {
         }
         let mut nav = None;
         ui.horizontal_centered(|ui| {
-            if design::button(ui, "‹ Paintings").clicked() {
-                if self.painted
-                    && let Err(e) = self.project.write_thumbnail()
-                {
-                    self.error = Some(format!("{e:#}"));
-                }
-                nav = Some(Nav::Home);
-            }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if design::button(ui, &format!("{:.0}%", self.view.zoom * 100.0)).clicked() {
-                    self.view = View::framing(self.project.layer_bounds());
-                }
-                if design::toggle_button(ui, "Move", self.moving).clicked() {
-                    self.moving = !self.moving;
-                }
-                if self.project.is_paintable() {
-                    let painting = self.painter.is_some();
-                    if design::toggle_button(ui, "Paint", painting).clicked() {
-                        self.painter = (!painting).then(|| Painter::new(&self.project));
+            design::tray(ui, |ui| {
+                if design::button(ui, "‹ Paintings").clicked() {
+                    if self.painted
+                        && let Err(e) = self.project.write_thumbnail()
+                    {
+                        self.error = Some(format!("{e:#}"));
                     }
+                    nav = Some(Nav::Home);
                 }
-                if self.project.is_cuttable() && design::button(ui, "Edit cuts").clicked() {
-                    nav = Some(Nav::Cut(self.project.clone()));
-                }
+            });
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                design::tray(ui, |ui| {
+                    if design::button(ui, &format!("{:.0}%", self.view.zoom * 100.0)).clicked() {
+                        self.view = View::framing(self.project.layer_bounds());
+                    }
+                    if design::toggle_button(ui, "Move", self.moving).clicked() {
+                        self.moving = !self.moving;
+                    }
+                    if self.project.is_paintable() {
+                        let painting = self.painter.is_some();
+                        if design::toggle_button(ui, "Paint", painting).clicked() {
+                            self.painter = (!painting).then(|| Painter::new(&self.project));
+                        }
+                    }
+                    if self.project.is_cuttable() && design::button(ui, "Edit cuts").clicked() {
+                        nav = Some(Nav::Cut(self.project.clone()));
+                    }
+                });
             });
         });
         nav
     }
 
     fn left_panel(&mut self, ui: &mut egui::Ui) {
-        design::heading(ui, &self.project.name);
-        design::heading(ui, "Layers");
-        egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-            ui.spacing_mut().item_spacing.y = 0.0;
-            for i in (0..self.project.layers.len()).rev() {
-                let name = &self.project.layers[i].name;
-                let selected = self.painter.as_ref().is_some_and(|p| p.piece == i);
-                let (row, dot) = design::layer_row(ui, name, self.visible[i], selected);
-                match &mut self.painter {
-                    Some(painter) if row.clicked() => painter.select(&self.project, i),
-                    None if row.clicked() => self.visible[i] = !self.visible[i],
-                    _ => {}
+        design::group(ui, |ui| {
+            ui.set_min_height(ui.available_height());
+            design::heading(ui, &self.project.name);
+            design::heading(ui, "Layers");
+            egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                for i in (0..self.project.layers.len()).rev() {
+                    let name = &self.project.layers[i].name;
+                    let selected = self.painter.as_ref().is_some_and(|p| p.piece == i);
+                    let (row, dot) = design::layer_row(ui, name, self.visible[i], selected);
+                    match &mut self.painter {
+                        Some(painter) if row.clicked() => painter.select(&self.project, i),
+                        None if row.clicked() => self.visible[i] = !self.visible[i],
+                        _ => {}
+                    }
+                    if dot {
+                        self.visible[i] = !self.visible[i];
+                    }
                 }
-                if dot {
-                    self.visible[i] = !self.visible[i];
-                }
-            }
+            });
         });
     }
 
@@ -189,26 +199,30 @@ impl LightRoom {
             self.after_paint(outcome);
             design::gap(ui);
         }
-        design::heading(ui, "Light");
-        ui.add_space(4.0);
-        ui.vertical_centered(|ui| {
-            if self
-                .ball
-                .show(ui, &mut self.light, self.ambient, self.strength, self.sheen)
-            {
-                self.orbit = false;
-            }
+        design::group(ui, |ui| {
+            design::heading(ui, "Light");
+            ui.add_space(4.0);
+            ui.vertical_centered(|ui| {
+                if self
+                    .ball
+                    .show(ui, &mut self.light, self.ambient, self.strength, self.sheen)
+                {
+                    self.orbit = false;
+                }
+            });
+            ui.add_space(8.0);
+            design::slider(ui, "Height", &mut self.light.height, 0.05..=1.0);
+            design::slider(ui, "Strength", &mut self.strength, 0.0..=2.0);
+            design::slider(ui, "Ambient", &mut self.ambient, 0.0..=1.0);
+            design::slider(ui, "Sheen", &mut self.sheen, 0.0..=1.0);
+            design::toggle(ui, "Orbit", &mut self.orbit);
         });
-        ui.add_space(8.0);
-        design::slider(ui, "Height", &mut self.light.height, 0.05..=1.0);
-        design::slider(ui, "Strength", &mut self.strength, 0.0..=2.0);
-        design::slider(ui, "Ambient", &mut self.ambient, 0.0..=1.0);
-        design::slider(ui, "Sheen", &mut self.sheen, 0.0..=1.0);
-        design::toggle(ui, "Orbit", &mut self.orbit);
         design::gap(ui);
-        design::heading(ui, "Display");
-        design::toggle(ui, "Dark paper", &mut self.dark_paper);
-        design::toggle(ui, "Linear light", &mut self.linear);
+        design::group(ui, |ui| {
+            design::heading(ui, "Display");
+            design::toggle(ui, "Dark paper", &mut self.dark_paper);
+            design::toggle(ui, "Linear light", &mut self.linear);
+        });
     }
 
     fn viewport(&mut self, ui: &mut egui::Ui) {
@@ -265,6 +279,7 @@ impl LightRoom {
             let brush = response.hover_pos().filter(|_| !panning);
             painter.overlay(ui, &self.project, &self.view, rect, brush);
         }
+        design::canvas_corners(ui, rect);
         if response.hovered() {
             let icon = match (panning, self.painter.is_some()) {
                 (true, _) if response.dragged() => egui::CursorIcon::Grabbing,
@@ -379,23 +394,29 @@ impl LightRoom {
         }
         let nav = design::top_bar(ui, |ui| self.toolbar(ui));
         design::side_panel(egui::Panel::left("sidebar"), 216.0, ui, |ui| self.left_panel(ui));
-        design::side_panel(egui::Panel::right("inspector"), 244.0, ui, |ui| {
+        design::side_panel_with_gutter(egui::Panel::right("inspector"), 244.0, GUTTER as i8, ui, |ui| {
             // Pinned above the scrolling part, so it can't scroll out of reach while painting.
             if self.mode == Mode::Normals || self.painter.is_some() {
-                let changed = design::slider(ui, "Normal opacity", &mut self.normal_opacity, 0.0..=1.0);
-                if changed {
-                    self.mode = Mode::Normals;
-                }
-                ui.add_space(design::GAP * 2.0);
+                ui.scope(|ui| {
+                    ui.set_max_width(ui.available_width() - GUTTER);
+                    design::group(ui, |ui| {
+                        let changed =
+                            design::slider(ui, "Normal opacity", &mut self.normal_opacity, 0.0..=1.0);
+                        if changed {
+                            self.mode = Mode::Normals;
+                        }
+                    });
+                });
+                design::gap(ui);
             }
             egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
                 // Keep a gutter for the scroll bar, so it never sits on the values.
-                ui.set_max_width(ui.available_width() - 8.0);
+                ui.set_max_width(ui.available_width() - GUTTER);
                 self.right_panel(ui)
             });
         });
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(design::WHITE))
+            .frame(design::canvas_frame(true))
             .show(ui, |ui| self.viewport(ui));
         nav
     }

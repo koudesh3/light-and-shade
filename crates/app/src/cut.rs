@@ -236,69 +236,77 @@ impl CutBoard {
             self.tool = TOOLS[i];
         }
         ui.horizontal_centered(|ui| {
-            if design::button(ui, "‹ Paintings").clicked() {
-                self.close_draft();
-                nav = Some(if self.dirty {
-                    Nav::BakeHome(self.project.clone())
-                } else {
-                    Nav::Home
-                });
-            }
+            design::tray(ui, |ui| {
+                if design::button(ui, "‹ Paintings").clicked() {
+                    self.close_draft();
+                    nav = Some(if self.dirty {
+                        Nav::BakeHome(self.project.clone())
+                    } else {
+                        Nav::Home
+                    });
+                }
+            });
+            ui.add_space(4.0);
             design::muted_line(ui, &self.project.name, 260.0);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let finished = !self.project.cuts.is_empty() || self.draft.len() >= 3;
-                if finished && design::primary_button(ui, "Done").clicked() {
-                    self.close_draft();
-                    nav = Some(Nav::Bake(self.project.clone()));
-                }
-                if design::button(ui, &format!("{:.0}%", self.view.zoom * 100.0)).clicked() {
-                    self.view = View::default();
-                }
+                design::tray(ui, |ui| {
+                    let finished = !self.project.cuts.is_empty() || self.draft.len() >= 3;
+                    if finished && design::primary_button(ui, "Done").clicked() {
+                        self.close_draft();
+                        nav = Some(Nav::Bake(self.project.clone()));
+                    }
+                    if design::button(ui, &format!("{:.0}%", self.view.zoom * 100.0)).clicked() {
+                        self.view = View::default();
+                    }
+                });
             });
         });
         nav
     }
 
     fn left_panel(&mut self, ui: &mut egui::Ui) {
-        design::heading(ui, "Pieces");
-        if self.project.cuts.is_empty() {
-            ui.colored_label(design::MUTED, "Nothing cut yet");
-        }
-        let mut chosen = None;
-        egui::ScrollArea::vertical()
-            .max_height(ui.available_height() - 70.0)
-            .show(ui, |ui| {
-                ui.spacing_mut().item_spacing.y = 0.0;
-                for (i, cut) in self.project.cuts.iter().enumerate().rev() {
-                    if design::row(ui, &cut.name, self.selected == Some(i), design::INK).clicked() {
-                        chosen = Some(i);
+        design::group(ui, |ui| {
+            ui.set_min_height(ui.available_height());
+            design::heading(ui, "Pieces");
+            if self.project.cuts.is_empty() {
+                ui.colored_label(design::MUTED, "Nothing cut yet");
+            }
+            let mut chosen = None;
+            egui::ScrollArea::vertical()
+                .max_height(ui.available_height() - 70.0)
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    for (i, cut) in self.project.cuts.iter().enumerate().rev() {
+                        if design::row(ui, &cut.name, self.selected == Some(i), design::INK).clicked() {
+                            chosen = Some(i);
+                        }
                     }
+                });
+            if let Some(i) = chosen {
+                self.selected = (self.selected != Some(i)).then_some(i);
+            }
+            design::gap(ui);
+            ui.horizontal_wrapped(|ui| {
+                if !self.history.is_empty() && design::button(ui, "Undo").clicked() {
+                    self.undo();
+                }
+                if !self.undone.is_empty() && design::button(ui, "Redo").clicked() {
+                    self.redo();
+                }
+                if self.selected.is_some() && design::button(ui, "Delete").clicked() {
+                    self.remove_selected();
+                }
+                let holes = self
+                    .selected
+                    .is_some_and(|i| !self.project.cuts[i].holes.is_empty());
+                if holes && design::button(ui, "Fill holes").clicked() {
+                    self.remember();
+                    if let Some(i) = self.selected {
+                        self.project.cuts[i].holes.clear();
+                    }
+                    self.save();
                 }
             });
-        if let Some(i) = chosen {
-            self.selected = (self.selected != Some(i)).then_some(i);
-        }
-        design::gap(ui);
-        ui.horizontal_wrapped(|ui| {
-            if !self.history.is_empty() && design::button(ui, "Undo").clicked() {
-                self.undo();
-            }
-            if !self.undone.is_empty() && design::button(ui, "Redo").clicked() {
-                self.redo();
-            }
-            if self.selected.is_some() && design::button(ui, "Delete").clicked() {
-                self.remove_selected();
-            }
-            let holes = self
-                .selected
-                .is_some_and(|i| !self.project.cuts[i].holes.is_empty());
-            if holes && design::button(ui, "Fill holes").clicked() {
-                self.remember();
-                if let Some(i) = self.selected {
-                    self.project.cuts[i].holes.clear();
-                }
-                self.save();
-            }
         });
     }
 
@@ -405,6 +413,7 @@ impl CutBoard {
 
         let placed = Placement::of(ui, &self.view, rect, painting);
         let to_screen = |p: [f32; 2]| placed.to_screen(p);
+        design::canvas_surface(ui, rect);
         let painter = ui.painter_at(rect);
         let image = Rect::from_min_size(to_screen([0.0, 0.0]), egui::Vec2::from(painting) * placed.scale());
         let uv = Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0));
@@ -449,6 +458,7 @@ impl CutBoard {
             line(points, false, 1.5);
             dot(to_screen(self.draft[0]), 5.0);
         }
+        design::canvas_corners(ui, rect);
         let low_resolution = format!(
             "This image is only {} × {}, so it will look soft. Dragging from Photos can give a small \
              preview: export the photo, then drop that file instead.",
@@ -478,7 +488,7 @@ impl CutBoard {
         let nav = design::top_bar(ui, |ui| self.toolbar(ui));
         design::side_panel(egui::Panel::left("pieces"), 216.0, ui, |ui| self.left_panel(ui));
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(design::WHITE))
+            .frame(design::canvas_frame(false))
             .show(ui, |ui| self.canvas(ui));
         nav
     }

@@ -169,63 +169,70 @@ impl Painter {
     /// The right-hand controls. Returns whether the map changed.
     pub fn panel(&mut self, ui: &mut egui::Ui, project: &mut Project) -> Result<bool> {
         let mut changed = false;
-        design::heading(ui, "Direction");
-        ui.add_space(4.0);
-        ui.vertical_centered(|ui| self.sphere.show(ui, &mut self.normal, self.shades));
-        ui.add_space(4.0);
-        let row = vec2(ui.available_width(), design::ROW);
-        ui.allocate_ui_with_layout(row, egui::Layout::left_to_right(egui::Align::Center), |ui| {
-            let [x, y, z] = self.normal;
-            ui.colored_label(design::MUTED, format!("{x:.2}  {y:.2}  {z:.2}"));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if design::button(ui, "Facing you").clicked() {
-                    self.normal = FACING_YOU;
-                }
+        design::group(ui, |ui| {
+            design::heading(ui, "Direction");
+            ui.add_space(4.0);
+            ui.vertical_centered(|ui| self.sphere.show(ui, &mut self.normal, self.shades));
+            ui.add_space(4.0);
+            let row = vec2(ui.available_width(), design::ROW);
+            ui.allocate_ui_with_layout(row, egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                let [x, y, z] = self.normal;
+                ui.colored_label(design::MUTED, format!("{x:.2}  {y:.2}  {z:.2}"));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if design::button(ui, "Facing you").clicked() {
+                        self.normal = FACING_YOU;
+                    }
+                });
             });
-        });
-        let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), design::ROW), egui::Sense::hover());
-        const SHADES: [Option<usize>; 3] = [None, Some(32), Some(16)];
-        let selected = SHADES.iter().position(|s| *s == self.shades).unwrap_or(0);
-        if let Some(i) = design::tabs(ui, rect.center(), &["All", "32", "16"], selected) {
-            self.shades = SHADES[i];
-        }
-        changed |= self.sync_active(ui, project)?;
-        design::gap(ui);
-        design::heading(ui, "Tool");
-        let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), design::ROW), egui::Sense::hover());
-        const TOOLS: [Tool; 3] = [Tool::Brush, Tool::Shape, Tool::Erase];
-        let selected = TOOLS.iter().position(|t| *t == self.tool).unwrap_or(0);
-        if let Some(i) = design::tabs(ui, rect.center(), &["Brush", "Shape", "Erase"], selected) {
-            self.tool = TOOLS[i];
-            self.shape.clear();
-            self.active = None;
-        }
-        ui.add_space(4.0);
-        design::whole_slider(ui, "Size", &mut self.radius, 6.0..=300.0);
-        ui.horizontal_wrapped(|ui| {
-            if design::button(ui, "Fill piece").clicked() {
-                let fill = Stroke {
-                    kind: StrokeKind::Fill,
-                    normal: self.normal,
-                    radius: 0.0,
-                    points: Vec::new(),
-                };
-                self.commit(project, fill)?;
-                changed = true;
+            let (rect, _) =
+                ui.allocate_exact_size(vec2(ui.available_width(), design::ROW), egui::Sense::hover());
+            const SHADES: [Option<usize>; 3] = [None, Some(32), Some(16)];
+            let selected = SHADES.iter().position(|s| *s == self.shades).unwrap_or(0);
+            if let Some(i) = design::tabs(ui, rect.center(), &["All", "32", "16"], selected) {
+                self.shades = SHADES[i];
             }
-            if !self.history.is_empty() && design::button(ui, "Undo").clicked() {
-                changed |= self.undo(project)?;
-            }
-            if !self.undone.is_empty() && design::button(ui, "Redo").clicked() {
-                changed |= self.redo(project)?;
-            }
-            if !project.cuts[self.piece].strokes.is_empty() && design::button(ui, "Clear").clicked() {
-                self.clear(project)?;
-                changed = true;
-            }
+            changed |= self.sync_active(ui, project)?;
             anyhow::Ok(())
-        })
-        .inner?;
+        })?;
+        design::gap(ui);
+        design::group(ui, |ui| {
+            design::heading(ui, "Tool");
+            let (rect, _) =
+                ui.allocate_exact_size(vec2(ui.available_width(), design::ROW), egui::Sense::hover());
+            const TOOLS: [Tool; 3] = [Tool::Brush, Tool::Shape, Tool::Erase];
+            let selected = TOOLS.iter().position(|t| *t == self.tool).unwrap_or(0);
+            if let Some(i) = design::tabs(ui, rect.center(), &["Brush", "Shape", "Erase"], selected) {
+                self.tool = TOOLS[i];
+                self.shape.clear();
+                self.active = None;
+            }
+            ui.add_space(4.0);
+            design::whole_slider(ui, "Size", &mut self.radius, 6.0..=300.0);
+            ui.horizontal_wrapped(|ui| {
+                if design::button(ui, "Fill piece").clicked() {
+                    let fill = Stroke {
+                        kind: StrokeKind::Fill,
+                        normal: self.normal,
+                        radius: 0.0,
+                        points: Vec::new(),
+                    };
+                    self.commit(project, fill)?;
+                    changed = true;
+                }
+                if !self.history.is_empty() && design::button(ui, "Undo").clicked() {
+                    changed |= self.undo(project)?;
+                }
+                if !self.undone.is_empty() && design::button(ui, "Redo").clicked() {
+                    changed |= self.redo(project)?;
+                }
+                if !project.cuts[self.piece].strokes.is_empty() && design::button(ui, "Clear").clicked() {
+                    self.clear(project)?;
+                    changed = true;
+                }
+                anyhow::Ok(())
+            })
+            .inner
+        })?;
         Ok(changed)
     }
 

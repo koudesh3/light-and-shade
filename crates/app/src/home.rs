@@ -71,7 +71,7 @@ impl Home {
             bottom: 24,
         };
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(design::WHITE).inner_margin(margin))
+            .frame(design::shell().inner_margin(margin))
             .show(ui, |ui| {
                 design::title(ui, "Paintings");
                 ui.add_space(20.0);
