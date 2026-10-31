@@ -35,6 +35,11 @@ pub struct Painter {
     shape: Vec<[f32; 2]>,
     /// While dragging a shape: the last freehand point on screen, and whether the drag began it.
     shape_drag: Option<(Pos2, bool)>,
+    /// The finished shape still selected, by its index in the piece's strokes. Picking a
+    /// direction changes it, until the next shape starts.
+    active: Option<usize>,
+    /// The active shape changed and the map on disk hasn't caught up.
+    unsaved: bool,
     sphere: Sphere,
     /// Earlier stroke lists, and the piece each belongs to.
     history: Vec<(usize, Vec<Stroke>)>,
@@ -53,6 +58,8 @@ impl Painter {
             stroke: None,
             shape: Vec::new(),
             shape_drag: None,
+            active: None,
+            unsaved: false,
             sphere: Sphere::default(),
             history: Vec::new(),
         }
@@ -68,6 +75,26 @@ impl Painter {
         self.stroke = None;
         self.shape.clear();
         self.shape_drag = None;
+        self.active = None;
+    }
+
+    /// Give the active shape the current direction, and save once the pointer lets go.
+    fn sync_active(&mut self, ui: &egui::Ui, project: &mut Project) -> Result<bool> {
+        let mut changed = false;
+        if let Some(i) = self.active {
+            let strokes = &mut project.cuts[self.piece].strokes;
+            if strokes[i].normal != self.normal {
+                strokes[i].normal = self.normal;
+                self.map = NormalMap::from_strokes(&project.layers[self.piece], strokes);
+                self.unsaved = true;
+                changed = true;
+            }
+        }
+        if self.unsaved && !ui.input(|i| i.pointer.primary_down()) {
+            self.unsaved = false;
+            project.store_normals(self.piece, &self.map)?;
+        }
+        Ok(changed)
     }
 
     /// Fill the shape being placed, if it has enough points to enclose anything.
@@ -83,6 +110,7 @@ impl Painter {
             points: std::mem::take(&mut self.shape),
         };
         self.commit(project, stroke)?;
+        self.active = Some(project.cuts[self.piece].strokes.len() - 1);
         Ok(true)
     }
 
@@ -96,6 +124,7 @@ impl Painter {
 
     fn commit(&mut self, project: &mut Project, stroke: Stroke) -> Result<()> {
         self.remember(project);
+        self.active = None;
         self.map.apply(&stroke);
         project.cuts[self.piece].strokes.push(stroke);
         project.store_normals(self.piece, &self.map)
@@ -141,6 +170,7 @@ impl Painter {
         if let Some(i) = design::tabs(ui, rect.center(), &["All", "32", "16"], selected) {
             self.shades = SHADES[i];
         }
+        changed |= self.sync_active(ui, project)?;
         design::gap(ui);
         design::heading(ui, "Tool");
         let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), design::ROW), egui::Sense::hover());
@@ -149,6 +179,7 @@ impl Painter {
         if let Some(i) = design::tabs(ui, rect.center(), &["Brush", "Shape", "Erase"], selected) {
             self.tool = TOOLS[i];
             self.shape.clear();
+            self.active = None;
         }
         ui.add_space(4.0);
         design::whole_slider(ui, "Size", &mut self.radius, 6.0..=300.0);
@@ -189,6 +220,7 @@ impl Painter {
                 if i.key_pressed(key) && self.tool != tool {
                     self.tool = tool;
                     self.shape.clear();
+                    self.active = None;
                 }
             }
             if i.key_pressed(Key::OpenBracket) {
@@ -206,6 +238,7 @@ impl Painter {
         });
         if escape {
             self.shape.clear();
+            self.active = None;
         }
         // While placing a shape, stepping back removes its last point.
         if (back || undo) && !self.shape.is_empty() {
@@ -215,7 +248,11 @@ impl Painter {
         if enter {
             return self.close_shape(project);
         }
-        if undo { self.undo(project) } else { Ok(false) }
+        if undo || (back && self.active.is_some()) {
+            self.undo(project)
+        } else {
+            Ok(false)
+        }
     }
 
     /// Handle the pointer over the canvas. Returns whether the map changed.
@@ -264,6 +301,7 @@ impl Painter {
                 if self.shape.len() >= 3 && on_first {
                     return self.close_shape(project);
                 }
+                self.active = None;
                 self.shape_drag = Some((at, self.shape.is_empty()));
                 self.shape.push(point);
                 return Ok(false);
@@ -337,10 +375,22 @@ impl Painter {
                 painter.circle(*dot, radius, Color32::WHITE, Line::new(1.5, design::INK));
             }
             if !dots.is_empty() {
-                design::toast(
-                    ui.ctx(),
-                    "Click the first point or press Return to fill. Esc to cancel.",
-                );
+                let hint = "Click the first point or press Return to fill. Esc to cancel.";
+                design::toast(ui.ctx(), hint);
+            }
+            if let Some(i) = self.active {
+                let strokes = &project.cuts[self.piece].strokes;
+                let outline: Vec<Pos2> = strokes[i].points.iter().map(to_screen).collect();
+                painter.add(Shape::closed_line(
+                    outline.clone(),
+                    Line::new(3.5, Color32::WHITE),
+                ));
+                painter.add(Shape::closed_line(outline.clone(), Line::new(1.5, design::INK)));
+                for dot in &outline {
+                    painter.circle(*dot, 3.5, Color32::WHITE, Line::new(1.5, design::INK));
+                }
+                let hint = "Pick a direction for this shape, then click to start the next one.";
+                design::toast(ui.ctx(), hint);
             }
         } else if let Some(p) = hover {
             painter.circle_stroke(

@@ -356,7 +356,7 @@ impl LightRoom {
                 }
                 ui.add_space(design::GAP * 2.0);
             }
-            egui::ScrollArea::vertical().show(ui, |ui| {
+            egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
                 // Keep a gutter for the scroll bar, so it never sits on the values.
                 ui.set_max_width(ui.available_width() - 8.0);
                 self.right_panel(ui)
