@@ -296,11 +296,12 @@ pub fn tabs(ui: &mut Ui, center: Pos2, labels: &[&str], selected: usize) -> Opti
     clicked
 }
 
-/// What happened on a card: `open` is the card itself, and `menu` is where to show its
-/// menu if the menu button was just clicked.
+/// What happened on a card: `open` is the card itself, `menu` is where to show its menu if
+/// the menu button was just clicked, and `title` is where its name sits.
 pub struct CardResponse {
     pub open: Response,
     pub menu: Option<Pos2>,
+    pub title: Rect,
 }
 
 /// A project card: an image on a quiet tile, with a name and a note below.
@@ -346,7 +347,8 @@ pub fn card(
             menu = Some(button.right_bottom() + vec2(-150.0, 4.0));
         }
     }
-    CardResponse { open, menu }
+    let title = Rect::from_min_size(pos2(left, tile.bottom() + 6.0), vec2(size.x - 4.0, 18.0));
+    CardResponse { open, menu, title }
 }
 
 pub enum MenuChoice {
@@ -394,31 +396,29 @@ fn clicked_away(ctx: &egui::Context, rect: Rect) -> bool {
     ctx.input(|i| i.pointer.any_click() && i.pointer.interact_pos().is_some_and(|p| !rect.contains(p)))
 }
 
-/// Width of the name box, and how far left of a menu it sits so it stays over its card.
-pub const NAME_BOX: f32 = 200.0;
-
 pub enum NameChoice {
     Waiting,
     Save,
     Cancel,
 }
 
-/// A small floating box for typing a name, opening with the old one selected so typing
-/// replaces it. Return or clicking away saves, Esc cancels.
-pub fn name_box(ctx: &egui::Context, at: Pos2, text: &mut String, opening: bool) -> NameChoice {
-    let size = vec2(NAME_BOX, ROW + 8.0);
-    let (rect, response) = egui::Area::new(egui::Id::unique("name box"))
+/// Edit a name in place over `title`, in the same type, opening with the old name selected
+/// so typing replaces it. Return or clicking away saves, Esc cancels.
+pub fn name_field(ctx: &egui::Context, title: Rect, text: &mut String, opening: bool) -> NameChoice {
+    let edge = vec2(6.0, 1.0);
+    let (rect, response) = egui::Area::new(egui::Id::unique("name field"))
         .order(egui::Order::Foreground)
-        .fixed_pos(at)
+        .fixed_pos(title.min - edge)
         .show(ctx, |ui| {
-            let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
-            ui.painter().add(squircle(rect, RADIUS, WHITE));
+            let (rect, _) = ui.allocate_exact_size(title.size() + edge * 2.0, Sense::hover());
+            ui.painter().add(squircle(rect, RADIUS * 0.75, WHITE));
             ui.painter()
-                .add(squircle_outline(rect, RADIUS, Stroke::new(1.5, INK)));
-            let inner = rect.shrink2(vec2(10.0, 4.0));
+                .add(squircle_outline(rect, RADIUS * 0.75, Stroke::new(1.0, RAIL)));
+            let inner = rect.shrink2(edge);
             let field = egui::TextEdit::singleline(text)
                 .frame(egui::Frame::NONE)
-                .font(regular(TEXT))
+                .margin(egui::Margin::ZERO)
+                .font(medium(TEXT))
                 .align(Align2::LEFT_CENTER)
                 .min_size(inner.size())
                 .desired_width(inner.width());
@@ -438,6 +438,9 @@ pub fn name_box(ctx: &egui::Context, at: Pos2, text: &mut String, opening: bool)
     let (enter, escape) = ctx.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
     if escape {
         NameChoice::Cancel
+    } else if opening {
+        // The click that chose Rename is still in the air, and it landed outside this field.
+        NameChoice::Waiting
     } else if enter || response.lost_focus() || clicked_away(ctx, rect) {
         NameChoice::Save
     } else {

@@ -122,16 +122,16 @@ impl Scripted {
         if let Some(factor) = var("LAS_PINCH").and_then(|f| f.parse().ok()) {
             input.push_back(vec![Event::PointerMoved(middle), Event::Zoom(factor)]);
         }
+        // LAS_TEXT: typing, after the input above.
+        if let Some(text) = var("LAS_TEXT") {
+            input.push_back(vec![Event::Text(text)]);
+        }
         let drag = points(&var("LAS_DRAG").unwrap_or_default());
         if let (Some(first), Some(last)) = (drag.first(), drag.last()) {
             input.push_back(vec![Event::PointerMoved(*first)]);
             input.push_back(vec![button(*first, true)]);
             input.extend(drag.iter().map(|p| vec![Event::PointerMoved(*p)]));
             input.push_back(vec![button(*last, false)]);
-        }
-        // LAS_TEXT: typing, after the input above.
-        if let Some(text) = var("LAS_TEXT") {
-            input.push_back(vec![Event::Text(text)]);
         }
         // LAS_KEYS: shortcuts after everything else, such as `cmd+z;ctrl+shift+z;enter`.
         for shortcut in var("LAS_KEYS")

@@ -17,9 +17,9 @@ pub struct Home {
     cards: Vec<Card>,
     /// The card whose menu is open, and where the menu sits.
     menu: Option<(usize, Pos2)>,
-    /// The card being renamed, where its box sits, and the name so far.
-    renaming: Option<(usize, Pos2, String)>,
-    /// The name box needs selecting for a few frames, until its text field exists.
+    /// The card being renamed, and the name so far.
+    renaming: Option<(usize, String)>,
+    /// The name needs selecting for a few frames, until its text field exists.
     selecting_name: u8,
 }
 
@@ -62,6 +62,7 @@ impl Home {
     pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Nav> {
         let mut nav = None;
         let mut opened = false;
+        let mut titles = Vec::with_capacity(self.cards.len());
         let margin = egui::Margin {
             left: 64,
             right: 64,
@@ -85,6 +86,7 @@ impl Home {
                             let name = &card.project.name;
                             let response =
                                 design::card(ui, CARD, image, name, &note(&card.project), menu_open);
+                            titles.push(response.title);
                             if let Some(at) = response.menu {
                                 self.menu = if menu_open { None } else { Some((i, at)) };
                                 opened = true;
@@ -98,8 +100,7 @@ impl Home {
         if let Some((i, at)) = self.menu {
             match design::menu(ui.ctx(), at, &["Rename", "Move to Trash"]) {
                 design::MenuChoice::Chosen(0) => {
-                    let left = at - vec2(design::NAME_BOX - 150.0, 0.0);
-                    self.renaming = Some((i, left, self.cards[i].project.name.clone()));
+                    self.renaming = Some((i, self.cards[i].project.name.clone()));
                     self.selecting_name = 2;
                     self.menu = None;
                 }
@@ -111,13 +112,15 @@ impl Home {
                 _ => {}
             }
         }
-        if let Some((i, at, name)) = &mut self.renaming {
+        if let Some((i, name)) = &mut self.renaming {
             let opening = self.selecting_name > 0;
             self.selecting_name = self.selecting_name.saturating_sub(1);
-            match design::name_box(ui.ctx(), *at, name, opening) {
+            match design::name_field(ui.ctx(), titles[*i], name, opening) {
                 design::NameChoice::Save => {
                     let project = self.cards[*i].project.clone();
-                    nav = Some(Nav::Rename(project, name.clone()));
+                    if *name != project.name {
+                        nav = Some(Nav::Rename(project, name.clone()));
+                    }
                     self.renaming = None;
                 }
                 design::NameChoice::Cancel => self.renaming = None,
