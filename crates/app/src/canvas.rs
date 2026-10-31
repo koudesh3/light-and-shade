@@ -3,6 +3,13 @@
 use eframe::egui::{self, Event, MouseWheelUnit, Pos2, Rect};
 use las_core::View;
 
+/// Whether undo or redo was pressed this frame. Both Control and Command work.
+pub fn history_keys(input: &egui::InputState) -> (bool, bool) {
+    let held = input.modifiers.command || input.modifiers.ctrl;
+    let z = held && input.key_pressed(egui::Key::Z);
+    (z && !input.modifiers.shift, z && input.modifiers.shift)
+}
+
 /// Each notch of a mouse wheel zooms by this much, as an exponent.
 const WHEEL_ZOOM: f32 = 0.08;
 

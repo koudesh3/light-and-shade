@@ -50,6 +50,8 @@ pub struct CutBoard {
     /// The last freehand point on screen, while a stroke is under way.
     stroke: Option<Pos2>,
     history: Vec<Snapshot>,
+    /// Snapshots stepped back from, most recent last. Any new change discards them.
+    undone: Vec<Snapshot>,
     /// Cuts changed since this board opened, so the layers need rebuilding.
     dirty: bool,
     error: Option<String>,
@@ -77,6 +79,8 @@ fn load_texture(ctx: &egui::Context, project: &Project) -> Result<TextureHandle>
 
 impl CutBoard {
     pub fn new(ctx: &egui::Context, project: Project) -> Result<Self> {
+        // Cuts can outnumber layers if the app closed before they were rebuilt.
+        let dirty = project.cuts.len() != project.layers.len();
         Ok(Self {
             texture: load_texture(ctx, &project)?,
             project,
@@ -87,7 +91,8 @@ impl CutBoard {
             grabbed: None,
             stroke: None,
             history: Vec::new(),
-            dirty: false,
+            undone: Vec::new(),
+            dirty,
             error: None,
         })
     }
@@ -96,23 +101,40 @@ impl CutBoard {
         [self.project.width as f32, self.project.height as f32]
     }
 
-    fn remember(&mut self) {
-        self.history.push(Snapshot {
+    fn snapshot(&self) -> Snapshot {
+        Snapshot {
             cuts: self.project.cuts.clone(),
             draft: self.draft.clone(),
-        });
+        }
+    }
+
+    fn remember(&mut self) {
+        self.undone.clear();
+        self.history.push(self.snapshot());
         if self.history.len() > HISTORY {
             self.history.remove(0);
         }
     }
 
+    fn restore(&mut self, snapshot: Snapshot) {
+        self.project.cuts = snapshot.cuts;
+        self.draft = snapshot.draft;
+        self.selected = None;
+        self.grabbed = None;
+        self.save();
+    }
+
     fn undo(&mut self) {
         if let Some(snapshot) = self.history.pop() {
-            self.project.cuts = snapshot.cuts;
-            self.draft = snapshot.draft;
-            self.selected = None;
-            self.grabbed = None;
-            self.save();
+            self.undone.push(self.snapshot());
+            self.restore(snapshot);
+        }
+    }
+
+    fn redo(&mut self) {
+        if let Some(snapshot) = self.undone.pop() {
+            self.history.push(self.snapshot());
+            self.restore(snapshot);
         }
     }
 
@@ -162,7 +184,7 @@ impl CutBoard {
     }
 
     fn keys(&mut self, ctx: &egui::Context) {
-        let (cut, hole, take_move, enter, escape, back, undo) = ctx.input(|i| {
+        let (cut, hole, take_move, enter, escape, back, (undo, redo)) = ctx.input(|i| {
             (
                 i.key_pressed(Key::C),
                 i.key_pressed(Key::H),
@@ -170,7 +192,7 @@ impl CutBoard {
                 i.key_pressed(Key::Enter),
                 i.key_pressed(Key::Escape),
                 i.key_pressed(Key::Backspace) || i.key_pressed(Key::Delete),
-                i.modifiers.command && i.key_pressed(Key::Z),
+                canvas::history_keys(i),
             )
         });
         if cut {
@@ -200,6 +222,9 @@ impl CutBoard {
         }
         if undo {
             self.undo();
+        }
+        if redo {
+            self.redo();
         }
     }
 
@@ -255,9 +280,12 @@ impl CutBoard {
             self.selected = (self.selected != Some(i)).then_some(i);
         }
         design::gap(ui);
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if !self.history.is_empty() && design::button(ui, "Undo").clicked() {
                 self.undo();
+            }
+            if !self.undone.is_empty() && design::button(ui, "Redo").clicked() {
+                self.redo();
             }
             if self.selected.is_some() && design::button(ui, "Delete").clicked() {
                 self.remove_selected();

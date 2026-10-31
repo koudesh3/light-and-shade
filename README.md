@@ -37,7 +37,7 @@ in front. Done cuts them out into layers.
 on the sphere. Set the sphere to 32 or 16 shades to limit it to that many evenly spread directions, as
 Voronoi cells. Brush (B) paints it, Shape (L) fills an area you outline with dots or a quick drag, and stays selected so you can pick its direction,, and Erase (E) goes back to
 facing you. `[` and `]` change the size, Option-click picks up a direction from the piece, and Cmd+Z
-undoes. Strokes stay editable and survive re-cutting. The Normals view shows normals over the lit
+undoes, with Shift to redo. Strokes stay editable and survive re-cutting. The Normals view shows normals over the lit
 painting, with a slider pinned above the panel for how strongly. Moving it switches to that view.
 
 **Lighting:** drag the painting or the ball to move the light. To pan by dragging, turn on Move (M) or

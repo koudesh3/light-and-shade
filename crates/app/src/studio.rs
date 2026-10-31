@@ -128,6 +128,33 @@ impl Scripted {
             input.extend(drag.iter().map(|p| vec![Event::PointerMoved(*p)]));
             input.push_back(vec![button(*last, false)]);
         }
+        // LAS_KEYS: shortcuts after everything else, such as `cmd+z;ctrl+shift+z`.
+        for shortcut in var("LAS_KEYS")
+            .unwrap_or_default()
+            .split(';')
+            .filter(|s| !s.is_empty())
+        {
+            let has = |name| shortcut.split('+').any(|part| part == name);
+            let modifiers = egui::Modifiers {
+                ctrl: has("ctrl"),
+                shift: has("shift"),
+                mac_cmd: has("cmd"),
+                command: has("cmd"),
+                ..Default::default()
+            };
+            let key = |pressed| Event::Key {
+                key: egui::Key::Z,
+                physical_key: None,
+                pressed,
+                repeat: false,
+                modifiers,
+            };
+            input.extend([
+                vec![Event::ModifiersChanged(modifiers), key(true)],
+                vec![key(false), Event::ModifiersChanged(Default::default())],
+                vec![],
+            ]);
+        }
         Self {
             shot: var("LAS_SHOT").map(PathBuf::from),
             mode: var("LAS_MODE").and_then(|m| match m.as_str() {

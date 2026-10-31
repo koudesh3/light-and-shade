@@ -1,7 +1,7 @@
 //! Painting normals onto a piece, in the light room, under the real light.
 
 use crate::ball::Sphere;
-use crate::canvas::Placement;
+use crate::canvas::{self, Placement};
 use crate::design;
 use anyhow::Result;
 use eframe::egui::{self, Color32, Key, Pos2, Rect, Shape, Stroke as Line, vec2};
@@ -43,6 +43,10 @@ pub struct Painter {
     sphere: Sphere,
     /// Earlier stroke lists, and the piece each belongs to.
     history: Vec<(usize, Vec<Stroke>)>,
+    /// Stroke lists stepped back from, most recent last. Any new change discards them.
+    undone: Vec<(usize, Vec<Stroke>)>,
+    /// Dots stepped back from while placing a shape.
+    undone_dots: Vec<[f32; 2]>,
 }
 
 impl Painter {
@@ -62,6 +66,8 @@ impl Painter {
             unsaved: false,
             sphere: Sphere::default(),
             history: Vec::new(),
+            undone: Vec::new(),
+            undone_dots: Vec::new(),
         }
     }
 
@@ -115,6 +121,7 @@ impl Painter {
     }
 
     fn remember(&mut self, project: &Project) {
+        self.undone.clear();
         self.history
             .push((self.piece, project.cuts[self.piece].strokes.clone()));
         if self.history.len() > HISTORY {
@@ -134,7 +141,19 @@ impl Painter {
         let Some((piece, strokes)) = self.history.pop() else {
             return Ok(false);
         };
-        project.cuts[piece].strokes = strokes;
+        let current = std::mem::replace(&mut project.cuts[piece].strokes, strokes);
+        self.undone.push((piece, current));
+        self.select(project, piece);
+        project.store_normals(piece, &self.map)?;
+        Ok(true)
+    }
+
+    fn redo(&mut self, project: &mut Project) -> Result<bool> {
+        let Some((piece, strokes)) = self.undone.pop() else {
+            return Ok(false);
+        };
+        let current = std::mem::replace(&mut project.cuts[piece].strokes, strokes);
+        self.history.push((piece, current));
         self.select(project, piece);
         project.store_normals(piece, &self.map)?;
         Ok(true)
@@ -183,7 +202,7 @@ impl Painter {
         }
         ui.add_space(4.0);
         design::whole_slider(ui, "Size", &mut self.radius, 6.0..=300.0);
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if design::button(ui, "Fill piece").clicked() {
                 let fill = Stroke {
                     kind: StrokeKind::Fill,
@@ -196,6 +215,9 @@ impl Painter {
             }
             if !self.history.is_empty() && design::button(ui, "Undo").clicked() {
                 changed |= self.undo(project)?;
+            }
+            if !self.undone.is_empty() && design::button(ui, "Redo").clicked() {
+                changed |= self.redo(project)?;
             }
             if !project.cuts[self.piece].strokes.is_empty() && design::button(ui, "Clear").clicked() {
                 self.clear(project)?;
@@ -211,7 +233,7 @@ impl Painter {
         if ctx.egui_wants_keyboard_input() {
             return Ok(false);
         }
-        let (enter, escape, back, undo) = ctx.input(|i| {
+        let (enter, escape, back, (undo, redo)) = ctx.input(|i| {
             for (key, tool) in [
                 (Key::B, Tool::Brush),
                 (Key::L, Tool::Shape),
@@ -233,17 +255,29 @@ impl Painter {
                 i.key_pressed(Key::Enter),
                 i.key_pressed(Key::Escape),
                 i.key_pressed(Key::Backspace) || i.key_pressed(Key::Delete),
-                i.modifiers.command && i.key_pressed(Key::Z),
+                canvas::history_keys(i),
             )
         });
         if escape {
             self.shape.clear();
+            self.undone_dots.clear();
             self.active = None;
         }
         // While placing a shape, stepping back removes its last point.
-        if (back || undo) && !self.shape.is_empty() {
-            self.shape.pop();
+        if (back || undo)
+            && let Some(dot) = self.shape.pop()
+        {
+            self.undone_dots.push(dot);
             return Ok(false);
+        }
+        if redo {
+            return match self.undone_dots.pop() {
+                Some(dot) => {
+                    self.shape.push(dot);
+                    Ok(false)
+                }
+                None => self.redo(project),
+            };
         }
         if enter {
             return self.close_shape(project);
@@ -302,6 +336,7 @@ impl Painter {
                     return self.close_shape(project);
                 }
                 self.active = None;
+                self.undone_dots.clear();
                 self.shape_drag = Some((at, self.shape.is_empty()));
                 self.shape.push(point);
                 return Ok(false);
