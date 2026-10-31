@@ -421,8 +421,7 @@ impl LightRoom {
             self.light.y = a.sin() * 0.8;
             ctx.request_repaint();
         }
-        let title = self.project.name.clone();
-        let (nav, back) = design::top_bar(ui, &title, |ui| self.toolbar(ui));
+        let (nav, back) = design::top_bar(ui, |ui| self.toolbar(ui));
         let nav = if back { Some(self.leave()) } else { nav };
         design::side_panel_with_gutter(
             egui::Panel::right("inspector"),

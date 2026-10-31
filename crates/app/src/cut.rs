@@ -519,8 +519,7 @@ impl CutBoard {
 
     pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Nav> {
         self.keys(&ui.ctx().clone());
-        let title = self.project.name.clone();
-        let (nav, back) = design::top_bar(ui, &title, |ui| self.toolbar(ui));
+        let (nav, back) = design::top_bar(ui, |ui| self.toolbar(ui));
         let nav = if back { Some(self.leave()) } else { nav };
         design::side_panel(egui::Panel::left("pieces"), design::SIDEBAR, ui, |ui| {
             self.left_panel(ui)

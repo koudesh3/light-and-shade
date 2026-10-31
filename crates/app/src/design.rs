@@ -18,7 +18,7 @@ pub const MUTED: Color32 = Color32::from_rgb(138, 138, 134);
 pub const WASH: Color32 = Color32::from_rgb(242, 242, 240);
 pub const RAIL: Color32 = Color32::from_rgb(228, 228, 225);
 
-/// The strip above the toolbar, holding the window buttons, the back chevron and the title.
+/// The strip above the toolbar, holding the window buttons and the back chevron.
 const STRIP: f32 = 42.0;
 /// How far the window buttons sit from the left of the window, on macOS.
 pub const WINDOW_BUTTONS_LEFT: f32 = 16.0;
@@ -258,7 +258,7 @@ pub fn tray<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> R {
 }
 
 /// The bar along the top of a screen.
-pub fn top_bar<R>(ui: &mut Ui, title: &str, contents: impl FnOnce(&mut Ui) -> R) -> (R, bool) {
+pub fn top_bar<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> (R, bool) {
     let frame = shell().inner_margin(egui::Margin {
         left: PAGE + TRAY_EDGE as i8,
         right: PAGE + TRAY_EDGE as i8,
@@ -271,12 +271,6 @@ pub fn top_bar<R>(ui: &mut Ui, title: &str, contents: impl FnOnce(&mut Ui) -> R)
         .frame(frame)
         .show(ui, |ui| {
             let back = back_chevron(ui);
-            // The window's own title is hidden, so draw it in the same row.
-            let galley = one_line(ui, title, regular(TEXT), MUTED, 420.0);
-            let top = STRIP_CENTRE + 0.5 - galley.size().y / 2.0;
-            let at = pos2(BACK_CENTRE + 20.0, top);
-            let painter = ui.painter().with_clip_rect(ui.ctx().content_rect());
-            painter.galley(at, galley, MUTED);
             (contents(ui), back)
         })
         .inner
