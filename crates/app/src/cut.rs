@@ -236,7 +236,6 @@ impl CutBoard {
             self.tool = TOOLS[i];
         }
         ui.horizontal_centered(|ui| {
-            ui.add_space(design::TRAFFIC_LIGHTS);
             if design::button(ui, "‹ Paintings").clicked() {
                 self.close_draft();
                 nav = Some(if self.dirty {

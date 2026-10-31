@@ -102,7 +102,6 @@ impl LightRoom {
         }
         let mut nav = None;
         ui.horizontal_centered(|ui| {
-            ui.add_space(design::TRAFFIC_LIGHTS);
             if design::button(ui, "‹ Paintings").clicked() {
                 nav = Some(Nav::Home);
             }

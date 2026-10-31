@@ -16,8 +16,8 @@ pub const MUTED: Color32 = Color32::from_rgb(138, 138, 134);
 pub const WASH: Color32 = Color32::from_rgb(242, 242, 240);
 pub const RAIL: Color32 = Color32::from_rgb(228, 228, 225);
 
-/// Room for the window buttons, which float over the top bar on macOS.
-pub const TRAFFIC_LIGHTS: f32 = if cfg!(target_os = "macos") { 74.0 } else { 0.0 };
+/// A strip above the toolbar for the window buttons, which float there on macOS.
+const WINDOW_BUTTONS: f32 = if cfg!(target_os = "macos") { 28.0 } else { 0.0 };
 pub const RADIUS: f32 = 8.0;
 pub const ROW: f32 = 28.0;
 pub const GAP: f32 = 6.0;
@@ -119,10 +119,16 @@ fn surface(x: i8, y: i8) -> egui::Frame {
 
 /// The bar along the top of a screen.
 pub fn top_bar<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> R {
+    let frame = egui::Frame::new().fill(WHITE).inner_margin(egui::Margin {
+        left: PAGE,
+        right: PAGE,
+        top: WINDOW_BUTTONS as i8,
+        bottom: 0,
+    });
     egui::Panel::top("top bar")
-        .exact_size(46.0)
+        .exact_size(WINDOW_BUTTONS + 40.0)
         .show_separator_line(false)
-        .frame(surface(PAGE, 0))
+        .frame(frame)
         .show(ui, contents)
         .inner
 }
