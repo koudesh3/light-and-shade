@@ -38,6 +38,8 @@ pub const PAGE: i8 = 14;
 const TRAY_EDGE: f32 = 3.0;
 
 const TEXT: f32 = 13.0;
+/// How far a row's highlight reaches past its text.
+const ROW_BLEED: f32 = 8.0;
 const HEADING: f32 = 12.0;
 
 fn regular(size: f32) -> FontId {
@@ -361,12 +363,15 @@ fn hover_fill(ui: &Ui, response: &Response, selected: bool) -> Color32 {
 /// A full-width row, as in a sidebar.
 pub fn row(ui: &mut Ui, text: &str, selected: bool, color: Color32) -> Response {
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), ROW), Sense::click());
-    ui.painter()
-        .add(squircle(rect, RADIUS, hover_fill(ui, &response, selected)));
+    // The highlight reaches into the card's margin, so the text lines up with the headings.
+    let bleed = vec2(ROW_BLEED, 0.0);
+    let fill = hover_fill(ui, &response, selected);
+    let painter = ui.painter().with_clip_rect(ui.clip_rect().expand2(bleed));
+    painter.add(squircle(rect.expand2(bleed), RADIUS, fill));
     let font = if selected { medium(TEXT) } else { regular(TEXT) };
     // Leave room for what a caller draws at the end of the row.
-    let galley = one_line(ui, text, font, color, rect.width() - 36.0);
-    let at = pos2(rect.left() + 8.0, rect.center().y - galley.size().y / 2.0);
+    let galley = one_line(ui, text, font, color, rect.width() - 28.0);
+    let at = pos2(rect.left(), rect.center().y - galley.size().y / 2.0);
     ui.painter().galley(at, galley, color);
     response
 }
@@ -374,7 +379,7 @@ pub fn row(ui: &mut Ui, text: &str, selected: bool, color: Color32) -> Response 
 /// A layer row: returns the row itself, and whether its visibility dot was clicked.
 pub fn layer_row(ui: &mut Ui, text: &str, on: bool, selected: bool) -> (Response, bool) {
     let response = row(ui, text, selected, if on { INK } else { MUTED });
-    let dot = response.rect.right_center() - vec2(13.0, 0.0);
+    let dot = response.rect.right_center() - vec2(5.0, 0.0);
     let hit = Rect::from_center_size(dot, Vec2::splat(ROW));
     let clicked = ui
         .interact(hit, response.id.with("dot"), Sense::click())
