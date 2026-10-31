@@ -525,7 +525,7 @@ impl CutBoard {
             self.left_panel(ui)
         });
         egui::CentralPanel::default()
-            .frame(design::canvas_frame(false))
+            .frame(design::canvas_frame(true, false))
             .show(ui, |ui| self.canvas(ui));
         self.finish_naming(ui.ctx());
         nav

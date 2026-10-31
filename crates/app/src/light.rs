@@ -117,8 +117,8 @@ impl LightRoom {
         }
         let mut nav = None;
         ui.horizontal_centered(|ui| {
-            design::card_tray(ui, design::SIDEBAR_CARD, 1, |ui, cell| {
-                if design::cell_button(ui, "‹ Paintings", false, cell).clicked() {
+            design::tray(ui, |ui| {
+                if design::button(ui, "‹ Paintings").clicked() {
                     if self.painted
                         && let Err(e) = self.project.write_thumbnail()
                     {
@@ -148,27 +148,24 @@ impl LightRoom {
         nav
     }
 
-    fn left_panel(&mut self, ui: &mut egui::Ui) {
+    fn layers(&mut self, ui: &mut egui::Ui) {
         design::group(ui, |ui| {
-            ui.set_min_height(ui.available_height());
             design::heading(ui, "Layers");
-            egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-                ui.spacing_mut().item_spacing.y = 0.0;
-                for i in (0..self.project.layers.len()).rev() {
-                    let name = &self.project.layers[i].name;
-                    let selected = self.painter.as_ref().is_some_and(|p| p.piece == i);
-                    let (row, dot) = design::layer_row(ui, name, self.visible[i], selected);
-                    if let Some(painter) = self.painter.as_mut().filter(|_| row.clicked()) {
-                        painter.select(&self.project, i);
-                    }
-                    if row.double_clicked() {
-                        self.naming = Some(design::InlineName::over_row(i, row.rect, name));
-                    }
-                    if dot {
-                        self.visible[i] = !self.visible[i];
-                    }
+            ui.spacing_mut().item_spacing.y = 0.0;
+            for i in (0..self.project.layers.len()).rev() {
+                let name = &self.project.layers[i].name;
+                let selected = self.painter.as_ref().is_some_and(|p| p.piece == i);
+                let (row, eye) = design::layer_row(ui, name, self.visible[i], selected);
+                if let Some(painter) = self.painter.as_mut().filter(|_| row.clicked()) {
+                    painter.select(&self.project, i);
                 }
-            });
+                if row.double_clicked() {
+                    self.naming = Some(design::InlineName::over_row(i, row.rect, name));
+                }
+                if eye {
+                    self.visible[i] = !self.visible[i];
+                }
+            }
         });
     }
 
@@ -228,6 +225,8 @@ impl LightRoom {
             design::toggle(ui, "Dark paper", &mut self.dark_paper);
             design::toggle(ui, "Linear light", &mut self.linear);
         });
+        design::gap(ui);
+        self.layers(ui);
     }
 
     fn viewport(&mut self, ui: &mut egui::Ui) {
@@ -424,9 +423,6 @@ impl LightRoom {
         }
         let title = self.project.name.clone();
         let nav = design::top_bar(ui, &title, |ui| self.toolbar(ui));
-        design::side_panel(egui::Panel::left("sidebar"), design::SIDEBAR, ui, |ui| {
-            self.left_panel(ui)
-        });
         design::side_panel_with_gutter(
             egui::Panel::right("inspector"),
             design::INSPECTOR,
@@ -455,7 +451,7 @@ impl LightRoom {
             },
         );
         egui::CentralPanel::default()
-            .frame(design::canvas_frame(true))
+            .frame(design::canvas_frame(false, true))
             .show(ui, |ui| self.viewport(ui));
         self.finish_naming(&ctx);
         nav

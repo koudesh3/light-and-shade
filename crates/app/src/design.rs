@@ -22,7 +22,7 @@ pub const RAIL: Color32 = Color32::from_rgb(228, 228, 225);
 /// buttons end about 22 points down, so this leaves the usual gap beneath them.
 const WINDOW_BUTTONS: f32 = if cfg!(target_os = "macos") { 36.0 } else { 0.0 };
 /// Where the middle of the window buttons sits, from the top of the window.
-const TITLE_CENTRE: f32 = 14.0;
+const TITLE_CENTRE: f32 = 15.25;
 /// Where the title starts, just past the window buttons.
 const TITLE_LEFT: f32 = 78.0;
 pub const RADIUS: f32 = 8.0;
@@ -138,9 +138,9 @@ pub fn shell() -> egui::Frame {
 }
 
 /// The frame around a canvas: the space left by the side panels, down to the window's edge.
-pub fn canvas_frame(panel_on_right: bool) -> egui::Frame {
+pub fn canvas_frame(panel_on_left: bool, panel_on_right: bool) -> egui::Frame {
     shell().inner_margin(egui::Margin {
-        left: 0,
+        left: if panel_on_left { 0 } else { PAGE },
         right: if panel_on_right { 0 } else { PAGE },
         top: PAGE,
         bottom: PAGE,
