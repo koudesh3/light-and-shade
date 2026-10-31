@@ -34,6 +34,8 @@ pub struct LightRoom {
     orbit: bool,
     view: View,
     ball: Ball,
+    /// Dragging pans the painting, for when there's no keyboard to hold Space on.
+    moving: bool,
     /// Present while painting normals.
     painter: Option<Painter>,
     error: Option<String>,
@@ -70,6 +72,7 @@ impl LightRoom {
                 ..View::default()
             },
             ball: Ball::default(),
+            moving: false,
             painter: None,
             error: None,
         })
@@ -106,6 +109,9 @@ impl LightRoom {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if design::button(ui, &format!("{:.0}%", self.view.zoom * 100.0)).clicked() {
                     self.view = View::default();
+                }
+                if design::toggle_button(ui, "Move", self.moving).clicked() {
+                    self.moving = !self.moving;
                 }
                 if self.project.is_paintable() {
                     let painting = self.painter.is_some();
@@ -202,13 +208,17 @@ impl LightRoom {
             (rect.height() * ppp).round().max(1.0),
         ];
         let painting = self.painting_size();
-        let panning =
-            ui.input(|i| i.key_down(Key::Space) || i.pointer.middle_down() || i.pointer.secondary_down());
+        let panning = self.moving
+            || ui.input(|i| i.key_down(Key::Space) || i.pointer.middle_down() || i.pointer.secondary_down());
 
-        if response.dragged() && panning {
-            let d = response.drag_delta() * ppp;
-            self.view.pan[0] += d.x;
-            self.view.pan[1] += d.y;
+        if panning {
+            // Stay here for the whole press. A drag only registers once the pointer has
+            // moved, and falling through before that would leave a dot of paint.
+            if response.dragged() {
+                let d = response.drag_delta() * ppp;
+                self.view.pan[0] += d.x;
+                self.view.pan[1] += d.y;
+            }
         } else if let Some(painter) = &mut self.painter {
             let outcome = painter.pointer(
                 ui,
@@ -240,10 +250,17 @@ impl LightRoom {
         debug_assert_eq!(size, [target[0] as u32, target[1] as u32]);
         ui.painter().image(id, rect, uv, Color32::WHITE);
         if let Some(painter) = &self.painter {
-            painter.overlay(ui, &self.project, &self.view, rect, response.hover_pos());
-            if response.hovered() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
-            }
+            let brush = response.hover_pos().filter(|_| !panning);
+            painter.overlay(ui, &self.project, &self.view, rect, brush);
+        }
+        if response.hovered() {
+            let icon = match (panning, self.painter.is_some()) {
+                (true, _) if response.dragged() => egui::CursorIcon::Grabbing,
+                (true, _) => egui::CursorIcon::Grab,
+                (false, true) => egui::CursorIcon::Crosshair,
+                (false, false) => egui::CursorIcon::Default,
+            };
+            ui.ctx().set_cursor_icon(icon);
         }
     }
 
@@ -325,6 +342,9 @@ impl LightRoom {
             }
             if i.key_pressed(Key::O) {
                 self.orbit = !self.orbit;
+            }
+            if i.key_pressed(Key::M) {
+                self.moving = !self.moving;
             }
         });
     }
