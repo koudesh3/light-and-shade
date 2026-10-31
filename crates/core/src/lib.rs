@@ -16,14 +16,47 @@ pub use paint::{
 /// Below this many pixels on the longest side, an image looks soft at full canvas size.
 const LOW_RESOLUTION: u32 = 1600;
 
+/// Whether a point is inside a closed polygon.
+fn polygon_contains(polygon: &[[f32; 2]], point: [f32; 2]) -> bool {
+    let mut inside = false;
+    for (i, a) in polygon.iter().enumerate() {
+        let b = polygon[(i + 1) % polygon.len()];
+        if (a[1] <= point[1]) != (b[1] <= point[1])
+            && point[0] < a[0] + (point[1] - a[1]) / (b[1] - a[1]) * (b[0] - a[0])
+        {
+            inside = !inside;
+        }
+    }
+    inside
+}
+
 /// A piece traced out of the source image, as a closed polygon in source pixels.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Cut {
     pub name: String,
     pub points: Vec<[f32; 2]>,
+    /// Areas punched out of the piece, as closed polygons in source pixels.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub holes: Vec<Vec<[f32; 2]>>,
     /// Painted normals, oldest first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub strokes: Vec<Stroke>,
+}
+
+impl Cut {
+    pub fn new(name: String, points: Vec<[f32; 2]>) -> Self {
+        Self {
+            name,
+            points,
+            holes: Vec::new(),
+            strokes: Vec::new(),
+        }
+    }
+
+    /// Whether a point is on the piece: inside its outline and not in a hole.
+    pub fn contains(&self, point: [f32; 2]) -> bool {
+        polygon_contains(&self.points, point) && !self.holes.iter().any(|h| polygon_contains(h, point))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -321,6 +354,20 @@ mod tests {
             let mips = load_mips(&p.dir.join(&layer.normal), MapKind::Normal).unwrap();
             assert!(mips[0].rgba.chunks(4).all(|c| c[2] > 100), "{}", layer.name);
         }
+    }
+
+    #[test]
+    fn a_piece_contains_points_outside_its_holes() {
+        let mut cut = Cut::new(
+            "Leaf".into(),
+            vec![[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]],
+        );
+        assert!(cut.contains([5.0, 5.0]));
+        assert!(!cut.contains([15.0, 5.0]));
+        cut.holes
+            .push(vec![[4.0, 4.0], [6.0, 4.0], [6.0, 6.0], [4.0, 6.0]]);
+        assert!(!cut.contains([5.0, 5.0]));
+        assert!(cut.contains([2.0, 2.0]));
     }
 
     #[test]

@@ -232,8 +232,14 @@ fn cut_out(source: &RgbaImage, cut: &Cut) -> (u32, u32, RgbaImage) {
     let right = ((x1 + MARGIN).ceil().max(0.0) as u32).clamp(left + 1, source.width().max(left + 1));
     let bottom = ((y1 + MARGIN).ceil().max(0.0) as u32).clamp(top + 1, source.height().max(top + 1));
     let (w, h) = (right - left, bottom - top);
-    let mask = coverage(&cut.points, left, top, w, h);
+    let mut mask = coverage(&cut.points, left, top, w, h);
     let mut piece = imageops::crop_imm(source, left, top, w, h).to_image();
+    for hole in &cut.holes {
+        let punched = coverage(hole, left, top, w, h);
+        for (alpha, gone) in mask.iter_mut().zip(punched) {
+            *alpha = ((*alpha as u32 * (255 - gone as u32) + 127) / 255) as u8;
+        }
+    }
     for (pixel, alpha) in piece.pixels_mut().zip(mask) {
         pixel[3] = ((pixel[3] as u32 * alpha as u32 + 127) / 255) as u8;
     }
@@ -329,16 +335,11 @@ mod tests {
         assert_eq!(project.name, "Little fern");
         assert!(project.dir.ends_with("little-fern"));
         project.cuts = vec![
-            Cut {
-                name: "Back".into(),
-                points: vec![[10.0, 10.0], [40.0, 10.0], [40.0, 40.0], [10.0, 40.0]],
-                strokes: Vec::new(),
-            },
-            Cut {
-                name: "Front".into(),
-                points: vec![[90.0, 70.0], [99.0, 70.0], [99.0, 79.0]],
-                strokes: Vec::new(),
-            },
+            Cut::new(
+                "Back".into(),
+                vec![[10.0, 10.0], [40.0, 10.0], [40.0, 40.0], [10.0, 40.0]],
+            ),
+            Cut::new("Front".into(), vec![[90.0, 70.0], [99.0, 70.0], [99.0, 79.0]]),
         ];
         project.bake().unwrap();
 
@@ -368,6 +369,23 @@ mod tests {
     }
 
     #[test]
+    fn holes_are_punched_out_of_a_piece() {
+        let mut source = RgbaImage::from_pixel(40, 40, image::Rgba([200, 30, 30, 255]));
+        source.put_pixel(20, 20, image::Rgba([0, 0, 0, 255]));
+        let mut cut = Cut::new(
+            "Leaf".into(),
+            vec![[5.0, 5.0], [35.0, 5.0], [35.0, 35.0], [5.0, 35.0]],
+        );
+        cut.holes
+            .push(vec![[15.0, 15.0], [25.0, 15.0], [25.0, 25.0], [15.0, 25.0]]);
+        let (x, y, piece) = cut_out(&source, &cut);
+        let alpha = |px: u32, py: u32| piece.get_pixel(px - x, py - y)[3];
+        assert_eq!(alpha(20, 20), 0, "the hole is clear");
+        assert_eq!(alpha(10, 10), 255, "the piece around it stays");
+        assert_eq!(alpha(30, 20), 255);
+    }
+
+    #[test]
     fn painted_normals_survive_a_rebake() {
         let root = std::env::temp_dir().join(format!("las-rebake-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
@@ -379,6 +397,7 @@ mod tests {
         project.cuts = vec![Cut {
             name: "Leaf".into(),
             points: vec![[10.0, 10.0], [50.0, 10.0], [50.0, 50.0], [10.0, 50.0]],
+            holes: Vec::new(),
             strokes: vec![crate::Stroke {
                 kind: crate::StrokeKind::Fill,
                 normal: [1.0, 0.0, 0.0],

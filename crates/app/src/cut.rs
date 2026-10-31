@@ -20,7 +20,16 @@ const HISTORY: usize = 200;
 #[derive(Clone, Copy, PartialEq)]
 enum Tool {
     Cut,
+    Hole,
     Move,
+}
+
+/// Which outline a grabbed point belongs to.
+#[derive(Clone, Copy)]
+enum Outline {
+    Draft,
+    Piece(usize),
+    Hole(usize, usize),
 }
 
 #[derive(Clone)]
@@ -36,8 +45,8 @@ pub struct CutBoard {
     tool: Tool,
     draft: Vec<[f32; 2]>,
     selected: Option<usize>,
-    /// A point being dragged: the cut it's in (`None` for the draft) and its index.
-    grabbed: Option<(Option<usize>, usize)>,
+    /// A point being dragged, and its index in its outline.
+    grabbed: Option<(Outline, usize)>,
     /// The last freehand point on screen, while a stroke is under way.
     stroke: Option<Pos2>,
     history: Vec<Snapshot>,
@@ -117,14 +126,29 @@ impl CutBoard {
         if self.draft.len() < 3 {
             return;
         }
+        if self.tool == Tool::Hole {
+            // Punch the selected piece, or else the frontmost one the hole starts on.
+            let start = self.draft[0];
+            let target = self
+                .selected
+                .or_else(|| self.project.cuts.iter().rposition(|c| c.contains(start)));
+            let Some(target) = target else {
+                self.error = Some("Start a hole inside a piece.".into());
+                return;
+            };
+            self.remember();
+            let hole = std::mem::take(&mut self.draft);
+            self.project.cuts[target].holes.push(hole);
+            self.selected = Some(target);
+            self.save();
+            return;
+        }
         self.remember();
         let number = self.project.cuts.len() + 1;
         let points = std::mem::take(&mut self.draft);
-        self.project.cuts.push(Cut {
-            name: format!("Piece {number}"),
-            points,
-            strokes: Vec::new(),
-        });
+        self.project
+            .cuts
+            .push(Cut::new(format!("Piece {number}"), points));
         self.selected = None;
         self.save();
     }
@@ -138,9 +162,10 @@ impl CutBoard {
     }
 
     fn keys(&mut self, ctx: &egui::Context) {
-        let (cut, take_move, enter, escape, back, undo) = ctx.input(|i| {
+        let (cut, hole, take_move, enter, escape, back, undo) = ctx.input(|i| {
             (
                 i.key_pressed(Key::C),
+                i.key_pressed(Key::H),
                 i.key_pressed(Key::M),
                 i.key_pressed(Key::Enter),
                 i.key_pressed(Key::Escape),
@@ -151,6 +176,9 @@ impl CutBoard {
         if cut {
             self.tool = Tool::Cut;
         }
+        if hole {
+            self.tool = Tool::Hole;
+        }
         if take_move {
             self.tool = Tool::Move;
         }
@@ -160,6 +188,7 @@ impl CutBoard {
         if escape && !self.draft.is_empty() {
             self.remember();
             self.draft.clear();
+            self.error = None;
         }
         if back {
             if self.draft.is_empty() {
@@ -176,9 +205,10 @@ impl CutBoard {
 
     fn toolbar(&mut self, ui: &mut egui::Ui) -> Option<Nav> {
         let mut nav = None;
-        let selected = (self.tool == Tool::Move) as usize;
-        if let Some(i) = design::tabs(ui, ui.max_rect().center(), &["Cut", "Move"], selected) {
-            self.tool = [Tool::Cut, Tool::Move][i];
+        const TOOLS: [Tool; 3] = [Tool::Cut, Tool::Hole, Tool::Move];
+        let selected = TOOLS.iter().position(|t| *t == self.tool).unwrap_or(0);
+        if let Some(i) = design::tabs(ui, ui.max_rect().center(), &["Cut", "Hole", "Move"], selected) {
+            self.tool = TOOLS[i];
         }
         ui.horizontal_centered(|ui| {
             ui.add_space(design::TRAFFIC_LIGHTS);
@@ -232,6 +262,16 @@ impl CutBoard {
             if self.selected.is_some() && design::button(ui, "Delete").clicked() {
                 self.remove_selected();
             }
+            let holes = self
+                .selected
+                .is_some_and(|i| !self.project.cuts[i].holes.is_empty());
+            if holes && design::button(ui, "Fill holes").clicked() {
+                self.remember();
+                if let Some(i) = self.selected {
+                    self.project.cuts[i].holes.clear();
+                }
+                self.save();
+            }
         });
     }
 
@@ -255,19 +295,20 @@ impl CutBoard {
         let touching = |p: [f32; 2]| placed.to_screen(p).distance(at) <= REACH;
 
         if pressed && inside && !panning {
-            let selected_points = self.selected.map(|i| (Some(i), &self.project.cuts[i].points));
-            let draft_points = (None, &self.draft);
-            let hit = selected_points
-                .into_iter()
-                .chain([draft_points])
-                .find_map(|(cut, pts)| {
-                    // The draft's first point closes the shape, so it can't be grabbed.
-                    let start = if cut.is_none() { 1 } else { 0 };
-                    pts.iter()
-                        .skip(start)
-                        .position(|p| touching(*p))
-                        .map(|i| (cut, i + start))
-                });
+            let mut outlines: Vec<(Outline, &Vec<[f32; 2]>)> = Vec::new();
+            if let Some(i) = self.selected {
+                outlines.push((Outline::Piece(i), &self.project.cuts[i].points));
+                for (h, hole) in self.project.cuts[i].holes.iter().enumerate() {
+                    outlines.push((Outline::Hole(i, h), hole));
+                }
+            }
+            outlines.push((Outline::Draft, &self.draft));
+            let hit = outlines.into_iter().find_map(|(outline, points)| {
+                // The draft's first point closes the shape, so it can't be grabbed.
+                let start = usize::from(matches!(outline, Outline::Draft));
+                let index = points.iter().skip(start).position(|p| touching(*p))?;
+                Some((outline, index + start))
+            });
             if let Some(hit) = hit {
                 self.remember();
                 self.grabbed = Some(hit);
@@ -276,15 +317,18 @@ impl CutBoard {
             } else {
                 self.remember();
                 self.draft.push(to_image(at));
-                self.selected = None;
+                if self.tool != Tool::Hole {
+                    self.selected = None;
+                }
                 self.stroke = Some(at);
             }
         } else if down {
-            if let Some((cut, i)) = self.grabbed {
+            if let Some((outline, i)) = self.grabbed {
                 let moved = to_image(at);
-                match cut {
-                    Some(c) => self.project.cuts[c].points[i] = moved,
-                    None => self.draft[i] = moved,
+                match outline {
+                    Outline::Draft => self.draft[i] = moved,
+                    Outline::Piece(c) => self.project.cuts[c].points[i] = moved,
+                    Outline::Hole(c, h) => self.project.cuts[c].holes[h][i] = moved,
                 }
             } else if let Some(last) = self.stroke
                 && last.distance(at) >= STROKE_STEP
@@ -361,6 +405,13 @@ impl CutBoard {
             if chosen {
                 points.iter().for_each(|p| dot(*p, 3.5));
             }
+            for hole in &cut.holes {
+                let points: Vec<Pos2> = hole.iter().map(|p| to_screen(*p)).collect();
+                line(points.clone(), true, if chosen { 2.0 } else { 1.25 });
+                if chosen {
+                    points.iter().for_each(|p| dot(*p, 3.5));
+                }
+            }
         }
         if !self.draft.is_empty() {
             let mut points: Vec<Pos2> = self.draft.iter().map(|p| to_screen(*p)).collect();
@@ -378,6 +429,8 @@ impl CutBoard {
         );
         let hint = if !self.draft.is_empty() {
             Some("Click the first point or press Return to close. Esc to cancel.")
+        } else if self.tool == Tool::Hole {
+            Some("Trace inside a piece to punch out that area.")
         } else if self.project.cuts.is_empty() && self.project.is_low_resolution() {
             Some(low_resolution.as_str())
         } else if self.project.cuts.is_empty() {

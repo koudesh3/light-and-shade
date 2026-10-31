@@ -28,7 +28,8 @@ Drop a PNG, JPEG or WebP anywhere on the home page, or click New painting.
 Two fingers on a trackpad pan, and a pinch or a mouse wheel zooms. Both work on every canvas.
 
 **Cutting:** click around a piece or drag to draw it. Click the first point or press Return to close
-it. To pan by dragging, switch to the Move tool (M, and C to go back) or hold Space. Select a piece in the list to drag its
+it. To pan by dragging, switch to the Move tool (M, and C to go back) or hold Space. The Hole tool (H) traces an area to punch out of a piece: the selected one, or else the
+frontmost piece the hole starts on. Select a piece to drag its hole points or fill its holes. Select a piece in the list to drag its
 points or delete it. Backspace removes the last point, Esc cancels, and Cmd+Z undoes. Later pieces sit
 in front. Done cuts them out into layers.
 
