@@ -347,7 +347,7 @@ pub fn card(
             menu = Some(button.right_bottom() + vec2(-150.0, 4.0));
         }
     }
-    let title = Rect::from_min_size(pos2(left, tile.bottom() + 6.0), vec2(size.x - 4.0, 18.0));
+    let title = Rect::from_min_size(pos2(tile.left(), tile.bottom() + 5.0), vec2(size.x, 22.0));
     CardResponse { open, menu, title }
 }
 
@@ -405,16 +405,15 @@ pub enum NameChoice {
 /// Edit a name in place over `title`, in the same type, opening with the old name selected
 /// so typing replaces it. Return or clicking away saves, Esc cancels.
 pub fn name_field(ctx: &egui::Context, title: Rect, text: &mut String, opening: bool) -> NameChoice {
-    let edge = vec2(6.0, 1.0);
     let (rect, response) = egui::Area::new(egui::Id::unique("name field"))
         .order(egui::Order::Foreground)
-        .fixed_pos(title.min - edge)
+        .fixed_pos(title.min)
         .show(ctx, |ui| {
-            let (rect, _) = ui.allocate_exact_size(title.size() + edge * 2.0, Sense::hover());
+            let (rect, _) = ui.allocate_exact_size(title.size(), Sense::hover());
             ui.painter().add(squircle(rect, RADIUS * 0.75, WHITE));
             ui.painter()
                 .add(squircle_outline(rect, RADIUS * 0.75, Stroke::new(1.0, RAIL)));
-            let inner = rect.shrink2(edge);
+            let inner = rect.shrink2(vec2(6.0, 1.0));
             let field = egui::TextEdit::singleline(text)
                 .frame(egui::Frame::NONE)
                 .margin(egui::Margin::ZERO)
